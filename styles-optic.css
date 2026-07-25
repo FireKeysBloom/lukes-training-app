@@ -112,7 +112,7 @@ main { flex: 1; padding: 8px 16px 96px; }
   border: 1px solid var(--line); background: var(--card); color: var(--text);
   border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 600; min-height: 40px;
 }
-.btn-mini.pain { color: var(--optic-ink); background: var(--optic); border-color: var(--optic); }
+.btn-mini.pain { color: var(--text); background: var(--card); border-color: var(--line); }
 .btn-link { background: none; border: none; color: var(--muted); text-decoration: underline; display: block; margin: 12px auto; font-size: 13px; padding: 8px; }
 
 /* Session player */
