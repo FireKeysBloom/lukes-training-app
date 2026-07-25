@@ -138,10 +138,15 @@ LTA.ui = (function () {
     if (dayType === 'custom') return '<p>Freestyle — build your own session exercise by exercise. Everything still counts toward progression.</p>';
     const blocks = E.prescriptionsForDay(dayType);
     if (!blocks) return '';
-    let n = 0;
-    blocks.forEach((b) => { n += b.items.length; });
-    const names = blocks[0].items.slice(0, 3).map((it) => D.EXERCISES[it.exerciseId].name).join(' · ');
-    return '<p>' + n + ' exercises — ' + esc(names) + '…</p>';
+    const items = [];
+    blocks.forEach((b) => b.items.forEach((it) => items.push(it)));
+    const rows = items.slice(0, 5).map((it) => {
+      const e = D.EXERCISES[it.exerciseId];
+      return '<div class="today-ex-row"><span class="tx-name">' + esc(e.name) + '</span>' +
+        '<span class="tx-rx">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + '</span></div>';
+    });
+    if (items.length > 5) rows.push('<div class="today-ex-row"><span class="tx-name">+ ' + (items.length - 5) + ' more</span></div>');
+    return '<div class="today-ex">' + rows.join('') + '</div>';
   }
 
   // ---------- Session player ----------
@@ -229,6 +234,10 @@ LTA.ui = (function () {
       '<div class="player-progress">' + (session.idx + 1) + ' / ' + items.length + '</div>' +
       '<button class="btn-mini pain" onclick="LTA.ui.openPainModal()">Pain?</button></div>';
 
+    if (ex.category !== 'conditioning' && ex.category !== 'mobility') {
+      h += '<div class="setseg">' + Array.from({ length: it.sets }, (_, i) =>
+        '<span class="' + (i < logged.length ? 'done' : i === logged.length ? 'now' : '') + '"></span>').join('') + '</div>';
+    }
     h += '<div class="ex-block muted">' + esc(it.block) + '</div>';
     h += '<h2 class="ex-name">' + esc(ex.name) + '</h2>';
     h += '<div class="ex-target">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + repUnit(ex) +
@@ -238,6 +247,10 @@ LTA.ui = (function () {
     if (it.phaseNote) h += '<p class="muted">🏋️ ' + esc(it.phaseNote) + ' — heavier, lower reps this block.</p>';
     h += '<ul class="cues">' + ex.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
     if (ex.video) h += '<a class="video-link" href="' + esc(ex.video) + '" target="_blank" rel="noopener">▶ Watch a form breakdown</a>';
+    if (st.lastSessionSets && st.lastSessionSets.length) {
+      h += '<div class="prev-line"><span class="lb">Previous</span>' +
+        st.lastSessionSets.map((x) => (x.weight ? x.weight + ' ' + unit() + ' × ' : '') + x.reps).join(' · ') + '</div>';
+    }
 
     if (logged.length) {
       h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + x.weight + '×' + x.reps + '</span>').join('') + '</div>';
