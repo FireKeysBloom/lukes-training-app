@@ -108,7 +108,7 @@ LTA.engine = (function () {
         if (it.main && it.strengthRange) {
           it.repLo = it.strengthRange[0];
           it.repHi = it.strengthRange[1];
-          it.restSec = (it.restSec || 90) + 30;
+          it.restSec = (it.restSec || 120) + 60; // heavier work earns longer rest (3–5 min territory)
           it.phaseNote = 'Strength phase';
         }
       }));

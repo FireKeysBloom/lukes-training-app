@@ -497,12 +497,15 @@ LTA.ui = (function () {
     const p = session.pending[it.exerciseId];
     session.sets.push({ exerciseId: it.exerciseId, weight: p.weight, reps: p.reps });
     saveDraft();
+    const ex = D.EXERCISES[it.exerciseId];
+    // Heavy/technical work auto-regulates: count UP until breathing settles, prescribed rest is the guide.
+    const autoreg = S().settings.autoRest !== false && (it.main || (ex && ex.category === 'power'));
     const logged = session.sets.filter((x) => x.exerciseId === it.exerciseId).length;
     const lastSetOfLastEx = session.idx === session.items.length - 1 && logged >= it.sets;
     if (logged >= it.sets && session.idx < session.items.length - 1) {
-      startRest(it.restSec, true); // auto-advance after rest
+      startRest(it.restSec, true, autoreg); // advance when rest ends / ready
     } else if (!lastSetOfLastEx && it.restSec) {
-      startRest(it.restSec, false);
+      startRest(it.restSec, false, autoreg);
     }
     render();
   }
@@ -546,16 +549,26 @@ LTA.ui = (function () {
 
   // ---------- Rest timer ----------
 
-  function startRest(sec, advanceAfter) {
+  function startRest(sec, advanceAfter, autoreg) {
     stopRest();
     if (!sec) return;
-    rest = { remaining: sec, total: sec, advanceAfter };
+    rest = { remaining: sec, total: sec, advanceAfter, autoreg: !!autoreg, elapsed: 0, beeped: false };
     rest.timerId = setInterval(tickRest, 1000);
     renderRestBar();
   }
 
   function tickRest() {
     if (!rest) return;
+    if (rest.autoreg) {
+      // Count up; the prescribed rest is a guide, you decide when you're ready.
+      rest.elapsed++;
+      if (!rest.beeped && rest.elapsed >= rest.total) { rest.beeped = true; beep(); }
+      const el = $('restTime');
+      if (el) el.textContent = U.fmtSec(rest.elapsed);
+      const bar = $('restFill');
+      if (bar) bar.style.width = Math.min(100, 100 * rest.elapsed / rest.total) + '%';
+      return;
+    }
     rest.remaining--;
     if (rest.remaining <= 0) {
       beep();
@@ -569,6 +582,13 @@ LTA.ui = (function () {
     if (el) el.textContent = U.fmtSec(rest.remaining);
     const bar = $('restFill');
     if (bar) bar.style.width = (100 * rest.remaining / rest.total) + '%';
+  }
+
+  function restReady() {
+    const adv = rest && rest.advanceAfter;
+    stopRest();
+    if (adv && session) { session.idx = Math.min(session.items.length - 1, session.idx + 1); }
+    render();
   }
 
   function adjustRest(d) { if (rest) { rest.remaining = Math.max(1, rest.remaining + d); tickRestPaint(); } }
@@ -589,11 +609,18 @@ LTA.ui = (function () {
       el.className = 'rest-bar';
       document.body.appendChild(el);
     }
-    el.innerHTML = '<div class="rest-fill" id="restFill" style="width:100%"></div>' +
-      '<div class="rest-row"><span>Rest</span><strong id="restTime">' + U.fmtSec(rest.remaining) + '</strong>' +
-      '<button class="btn-mini" onclick="LTA.ui.adjustRest(-15)">−15</button>' +
-      '<button class="btn-mini" onclick="LTA.ui.adjustRest(15)">+15</button>' +
-      '<button class="btn-mini" onclick="LTA.ui.stopRest()">Skip</button></div>';
+    if (rest.autoreg) {
+      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:0%"></div>' +
+        '<div class="rest-row"><span>Rest · guide ' + U.fmtSec(rest.total) + '+</span><strong id="restTime">0:00</strong>' +
+        '<button class="btn-mini" onclick="LTA.ui.restReady()">Ready — go</button></div>' +
+        '<div class="rest-hint">Breathing settled, same weight feels doable? That’s ready.</div>';
+    } else {
+      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:100%"></div>' +
+        '<div class="rest-row"><span>Rest</span><strong id="restTime">' + U.fmtSec(rest.remaining) + '</strong>' +
+        '<button class="btn-mini" onclick="LTA.ui.adjustRest(-15)">−15</button>' +
+        '<button class="btn-mini" onclick="LTA.ui.adjustRest(15)">+15</button>' +
+        '<button class="btn-mini" onclick="LTA.ui.stopRest()">Skip</button></div>';
+    }
   }
 
   function beep() {
@@ -1210,6 +1237,7 @@ LTA.ui = (function () {
       '<label class="btn btn-ghost file-btn">Import backup<input type="file" accept=".json" onchange="LTA.ui.importFile(this)"></label></div>';
 
     h += '<div class="card"><div class="card-title">Training</div>' +
+      '<label class="check" style="margin-top:4px"><input type="checkbox" id="setAutoRest"' + (s.settings.autoRest !== false ? ' checked' : '') + '> Auto-regulate rest on heavy lifts (count up until ready)</label>' +
       '<label>Default rest (seconds)</label><input class="input" id="setRest" type="number" value="' + s.settings.defaultRestSec + '">' +
       '<label>Weekly skeleton</label>';
     ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d, i) => {
@@ -1250,6 +1278,7 @@ LTA.ui = (function () {
 
   function saveTraining() {
     const s = S();
+    s.settings.autoRest = $('setAutoRest').checked;
     s.settings.defaultRestSec = Number($('setRest').value) || 90;
     document.querySelectorAll('.skel').forEach((sel) => { s.settings.skeleton[Number(sel.dataset.i)] = sel.value; });
     LTA.store.save(true);
@@ -1285,7 +1314,7 @@ LTA.ui = (function () {
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
     openNoteModal, saveNote,
-    startRest, stopRest, adjustRest,
+    startRest, stopRest, adjustRest, restReady,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
     finishRacket, finishSimple, segPick,
     openPainModal, savePainFlag,

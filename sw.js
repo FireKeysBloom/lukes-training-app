@@ -1,6 +1,7 @@
-/* Cache-first shell caching. Bump CACHE on deploys to invalidate. */
-const CACHE = 'lta-v2';
-const ASSETS = ['./', 'index.html', 'styles.css', 'store.js', 'data.js', 'sync.js', 'engine.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
+/* Cache-first shell caching + runtime caching of same-origin assets (fonts etc).
+ * Bump CACHE on deploys to invalidate. */
+const CACHE = 'lta-v3';
+const ASSETS = ['./', 'index.html', 'styles-optic.css', 'store.js', 'data.js', 'sync.js', 'engine.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png', 'fonts/fonts.css'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -15,7 +16,14 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   // Never intercept Supabase (or any cross-origin) calls.
   if (new URL(e.request.url).origin !== location.origin) return;
+  if (e.request.method !== 'GET') return;
   e.respondWith(
-    caches.match(e.request).then((hit) => hit || fetch(e.request))
+    caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
+      if (res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+      }
+      return res;
+    }))
   );
 });
