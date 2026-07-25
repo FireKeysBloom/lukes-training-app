@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Luke’s Training</title>
+  <meta name="theme-color" content="#0d1117">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Training">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <h1>Luke’s Training</h1>
+      <span id="syncDot" class="sync-dot off"></span>
+    </header>
+    <main id="view"></main>
+    <nav class="tabbar">
+      <button class="tab active" data-view="today" onclick="LTA.ui.setTab('today')"><span class="ico">🏋️</span>Today</button>
+      <button class="tab" data-view="week" onclick="LTA.ui.setTab('week')"><span class="ico">📅</span>Week</button>
+      <button class="tab" data-view="review" onclick="LTA.ui.setTab('review')"><span class="ico">📋</span>Review</button>
+      <button class="tab" data-view="progress" onclick="LTA.ui.setTab('progress')"><span class="ico">📈</span>Progress</button>
+      <button class="tab" data-view="settings" onclick="LTA.ui.setTab('settings')"><span class="ico">⚙️</span>Settings</button>
+    </nav>
+    <div id="modal" class="modal hidden"></div>
+  </div>
+  <script src="store.js"></script>
+  <script src="data.js"></script>
+  <script src="sync.js"></script>
+  <script src="engine.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
