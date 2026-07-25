@@ -6,8 +6,10 @@ Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage
 
 ## What it does
 
-- **Adaptive weekly rhythm** — 6 training days (Lower A/B, Upper A/B, run, zone-2) that reshuffle automatically when racket sessions land (1–3×/week).
-- **Auto-progression** — double progression on lifts, stall detection with 10% resets, deload every 5th week or when readiness drops.
+- **Adaptive weekly rhythm** — 4 lifting days (45–60 min, each structured Power → Strength → Muscle → Resilience), 2 conditioning days (return-to-run + HIIT spin / incline steady state), 1 GMB-style recovery day. The week reshuffles automatically when racket sessions land (1–3×/week).
+- **Choose your day** — pull any scheduled session forward and the days trade places, or build a freestyle workout exercise-by-exercise; everything still counts toward progression.
+- **Auto-progression + periodisation** — double progression on lifts, stall detection with 10% resets, deload every 5th week or when readiness drops, and Build ↔ Strength blocks alternating between deloads.
+- **Form first** — per-session tailored warmups, 2–3 cues per exercise, and a video search link to qualified coaches (Squat University, kneesovertoesguy, GMB, E3 Rehab, …) on every lift.
 - **Knee-safe return-to-run** — 11 stages from incline walking to a 5k, gated by pain (≤2/10 during + next morning to advance). Sprint work unlocks after 20 min continuous pain-free running.
 - **Shoulder overhead ladder** — landmine press → barbell OHP in 5 rungs, same pain gating, permanent rotator-cuff/scap/thoracic rehab volume on both upper days.
 - **Morning check-ins** — the day after runs, pressing, or play, the app asks about the knee/shoulder and regresses or advances accordingly.

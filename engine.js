@@ -38,10 +38,18 @@ LTA.engine = (function () {
     while (s.currentWeek.weekStart < monday) {
       // Mark unfinished planned days of the closing week as skipped.
       s.currentWeek.days.forEach((d) => { if (d.status === 'planned' && d.dayType !== 'rest') d.status = 'skipped'; });
-      s.weekHistory.push(s.currentWeek);
+      const closing = s.currentWeek;
+      s.weekHistory.push(closing);
       s.weekCounter++;
-      const nextStart = U.addDays(s.currentWeek.weekStart, 7);
+      const nextStart = U.addDays(closing.weekStart, 7);
       s.currentWeek = generateWeekPlan(nextStart, s.weekCounter % 5 === 0);
+      // Block periodisation: coming off a deload, alternate Build ↔ Strength emphasis.
+      if (closing.isDeload && !s.currentWeek.isDeload) {
+        s.phase = s.phase === 'strength' ? 'build' : 'strength';
+        s.currentWeek.decisions.push(s.phase === 'strength'
+          ? 'New block: STRENGTH phase — main lifts drop to low reps (heavier), everything else stays.'
+          : 'New block: BUILD phase — main lifts back to moderate reps for muscle.');
+      }
       changed = true;
     }
     if (changed) LTA.store.save();
@@ -70,7 +78,7 @@ LTA.engine = (function () {
 
     if (dayType === 'upperB' || (dayType === 'upperA' && w && w.mergedUpper)) {
       const rung = D.OVERHEAD_RUNGS[s.shoulderState.rungId];
-      const ladderItem = { exerciseId: rung.exerciseId, sets: 3, repLo: 8, repHi: 12, restSec: 120, progression: 'double' };
+      const ladderItem = { exerciseId: rung.exerciseId, sets: 3, repLo: 8, repHi: 12, restSec: 120, progression: 'double', main: true, strengthRange: [5, 8] };
       if (dayType === 'upperB') {
         blocks[0].items = [ladderItem];
         if (rung.addOn) blocks[0].items.push({ exerciseId: rung.addOn, sets: 3, repLo: 8, repHi: 10, restSec: 75, progression: 'double' });
@@ -79,6 +87,18 @@ LTA.engine = (function () {
         blocks.splice(1, 0, { title: 'From Upper B (merged)', items: [ladderItem, { exerciseId: 'lat_pulldown', sets: 3, repLo: 6, repHi: 10, restSec: 120, progression: 'double' }] });
         blocks.forEach((b) => { b.items = b.items.filter((it) => it.exerciseId !== 'db_curl' && it.exerciseId !== 'triceps_pressdown'); });
       }
+    }
+
+    // Strength phase: main lifts shift to their low-rep range with a little more rest.
+    if (s.phase === 'strength') {
+      blocks.forEach((b) => b.items.forEach((it) => {
+        if (it.main && it.strengthRange) {
+          it.repLo = it.strengthRange[0];
+          it.repHi = it.strengthRange[1];
+          it.restSec = (it.restSec || 90) + 30;
+          it.phaseNote = 'Strength phase';
+        }
+      }));
     }
 
     if (s.shoulderState.extraRehabVolume) {
@@ -109,7 +129,7 @@ LTA.engine = (function () {
     const s = S();
     const w = s.currentWeek;
     if (s.runState.pendingRegression) {
-      return { mode: 'bike', stage: null, protocol: D.EXERCISES.bike_intervals.cues.join(' · '), cues: ['Knee is settling — bike intervals replace this run.'] };
+      return { mode: 'bike', stage: null, protocol: D.EXERCISES.hiit_spin.cues.join(' · '), cues: ['Knee is settling — HIIT spin replaces this run (zero impact, same engine work).'] };
     }
     const stage = D.RUN_STAGES[s.runState.stageId];
     const halfVolume = w && w.isDeload;
@@ -186,7 +206,16 @@ LTA.engine = (function () {
       session.sets.forEach((x) => { (byEx[x.exerciseId] = byEx[x.exerciseId] || []).push(x); });
       const prescByEx = {};
       blocks.forEach((b) => b.items.forEach((it) => { prescByEx[it.exerciseId] = it; }));
-      Object.keys(byEx).forEach((exId) => progressExercise(exId, byEx[exId], prescByEx[exId]));
+      Object.keys(byEx).forEach((exId) => {
+        // Freestyle picks and mid-session additions have no template prescription —
+        // synthesize one from the exercise's own rep range so progression still applies.
+        let presc = prescByEx[exId];
+        if (!presc) {
+          const ex = D.EXERCISES[exId];
+          if (ex) presc = { exerciseId: exId, sets: 3, repLo: ex.repRange[0], repHi: ex.repRange[1], progression: ex.incrementKg ? 'double' : 'rehab' };
+        }
+        progressExercise(exId, byEx[exId], presc);
+      });
     }
 
     // Immediate shoulder rule: pain >=3 during overhead work drops the rung now.
@@ -402,6 +431,60 @@ LTA.engine = (function () {
     return w.decisions.slice(-4);
   }
 
+  // ---------- Choose-your-day ----------
+
+  // Do `takeType` on `dateStr` instead of what was scheduled; the week rearranges.
+  // If another planned day already holds takeType, the two days trade places.
+  // Otherwise the displaced session relocates to a free rest/conditioning slot, or drops.
+  function doDayInstead(dateStr, takeType) {
+    const s = S();
+    const w = s.currentWeek;
+    const day = w.days.find((d) => d.date === dateStr);
+    if (!day || day.dayType === takeType) return null;
+    if (takeType === 'racket') return insertRacketSession(dateStr);
+
+    const displaced = day.status === 'planned' ? day.dayType : null;
+    const donor = w.days.find((d) => d !== day && d.status === 'planned' && d.dayType === takeType);
+    day.dayType = takeType;
+    day.status = 'planned';
+    day.optional = false;
+
+    if (donor && displaced) {
+      donor.dayType = displaced;
+      decide(D.DAYS[takeType].name + ' pulled to ' + U.weekdayName(day.date) + '; ' + D.DAYS[displaced].name + ' takes ' + U.weekdayName(donor.date) + '.');
+      // Don't leave two heavy lower days back-to-back after the trade.
+      const isLower = (t) => t === 'lowerA' || t === 'lowerB';
+      w.days.forEach((d, i) => {
+        const next = w.days[i + 1];
+        if (next && isLower(d.dayType) && isLower(next.dayType) && d.status === 'planned' && next.status === 'planned') {
+          const upper = w.days.find((x) => x.status === 'planned' && x.date > next.date && (x.dayType === 'upperA' || x.dayType === 'upperB'));
+          if (upper) {
+            const t = next.dayType; next.dayType = upper.dayType; upper.dayType = t;
+            decide('Also swapped ' + U.weekdayName(next.date) + ' and ' + U.weekdayName(upper.date) + ' — two heavy lower days in a row is a recovery hole.');
+          }
+        }
+      });
+    } else if (donor && !displaced) {
+      donor.dayType = 'rest';
+      decide(D.DAYS[takeType].name + ' pulled to ' + U.weekdayName(day.date) + '; ' + U.weekdayName(donor.date) + ' becomes recovery.');
+    } else if (displaced && D.DAYS[displaced].kind === 'strength') {
+      const slot = w.days.find((d) => d !== day && d.status === 'planned' && (d.dayType === 'rest' || d.dayType === 'z2'));
+      if (slot) {
+        slot.dayType = displaced;
+        decide(D.DAYS[displaced].name + ' moved to ' + U.weekdayName(slot.date) + '.');
+      } else {
+        decide(D.DAYS[displaced].name + ' dropped this week — no free day left.');
+      }
+    } else if (displaced) {
+      decide(D.DAYS[displaced].name + ' skipped in favour of ' + D.DAYS[takeType].name + '.');
+    } else {
+      decide(D.DAYS[takeType].name + ' added on ' + U.weekdayName(day.date) + '.');
+    }
+
+    LTA.store.save(true);
+    return w.decisions.slice(-3);
+  }
+
   // ---------- Weekly review ----------
 
   function reviewDue() {
@@ -487,7 +570,7 @@ LTA.engine = (function () {
   return {
     ensureWeek, generateWeekPlan, dayForDate, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession,
-    reviewDue, processReview, adherenceOf, racketCount,
+    doDayInstead, reviewDue, processReview, adherenceOf, racketCount,
   };
 })();
 

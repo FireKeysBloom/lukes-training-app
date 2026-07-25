@@ -22,7 +22,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 1;
+  const CURRENT_SCHEMA = 2;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -41,6 +41,7 @@ LTA.store = (function () {
         supabaseKey: '',
       },
       exerciseStates: {},
+      phase: 'build', // 'build' (hypertrophy ranges) | 'strength' (low-rep ranges on main lifts); alternates after each deload
       runState: { stageId: 0, completionsAtStage: 0, lastRunDate: null, sprintUnlocked: false, sprintStageId: 0, sprintSessions: 0, pendingRegression: false },
       shoulderState: { rungId: 0, sessionsAtRung: 0, extraRehabVolume: false },
       weekCounter: 1,
@@ -54,7 +55,9 @@ LTA.store = (function () {
   }
 
   // Sequential migrations: MIGRATIONS[n] upgrades schemaVersion n -> n+1.
-  const MIGRATIONS = {};
+  const MIGRATIONS = {
+    1: function (s) { s.phase = s.phase || 'build'; },
+  };
 
   function migrate(s) {
     while (s.schemaVersion < CURRENT_SCHEMA) {

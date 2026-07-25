@@ -1,5 +1,5 @@
 /* Cache-first shell caching. Bump CACHE on deploys to invalidate. */
-const CACHE = 'lta-v1';
+const CACHE = 'lta-v2';
 const ASSETS = ['./', 'index.html', 'styles.css', 'store.js', 'data.js', 'sync.js', 'engine.js', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {

@@ -113,6 +113,7 @@ LTA.ui = (function () {
       } else {
         h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.startSession()">Start session</button>';
       }
+      h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Do something else today</button>';
       h += '</div>';
       if (day.optional) h += '<p class="muted">This day is optional this week (two racket sessions already).</p>';
     }
@@ -133,7 +134,8 @@ LTA.ui = (function () {
         '<p class="muted">Completions at this stage: ' + spec.completions + '/' + spec.required + '</p>';
     }
     if (dayType === 'racket') return '<p>Log your play session — duration, intensity, and how the shoulder handled serving.</p>';
-    if (dayType === 'rest') return '<p>Rest, a walk, or the 15-min mobility flow. Recovery is training.</p>';
+    if (dayType === 'rest') return '<p>GMB-style locomotion flow, a walk, or full rest. Recovery is training.</p>';
+    if (dayType === 'custom') return '<p>Freestyle — build your own session exercise by exercise. Everything still counts toward progression.</p>';
     const blocks = E.prescriptionsForDay(dayType);
     if (!blocks) return '';
     let n = 0;
@@ -174,13 +176,47 @@ LTA.ui = (function () {
     render();
   }
 
+  // "Do something else today": pull another scheduled day forward, or go freestyle.
+  function openChangeToday() {
+    const w = S().currentWeek;
+    const today = U.todayStr();
+    const todayDay = w.days.find((d) => d.date === today);
+    let h = '<h3>Do something else today</h3>';
+    const others = w.days.filter((d) => d.date !== today && d.status === 'planned' && d.dayType !== 'rest' && d.dayType !== (todayDay && todayDay.dayType));
+    if (others.length) {
+      h += '<label>Pull a scheduled day forward (the days trade places)</label>';
+      others.forEach((d) => {
+        h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'' + d.dayType + '\')">' + esc(D.DAYS[d.dayType].name) + ' <span class="muted">(' + U.weekdayName(d.date) + ')</span></button>';
+      });
+    }
+    h += '<label>Or</label>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'custom\')">🧩 Freestyle — build my own as I go</button>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'racket\')">🎾 Racket session</button>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'rest\')">🌙 Recovery day</button>';
+    modal(h, true);
+  }
+
+  function changeToday(type) {
+    const today = U.todayStr();
+    closeModal();
+    const decisions = LTA.engine.doDayInstead(today, type);
+    if (type === 'racket') {
+      session = { id: U.uid(), date: today, dayType: 'racket', items: [], sets: [], painFlags: [], pending: {}, startedAt: Date.now() };
+    }
+    render();
+    if (decisions && decisions.length) toast(decisions.join(' '));
+  }
+
   function renderSessionPlayer(view) {
     const dayType = session.dayType;
+    const tpl = D.DAYS[dayType];
+    if (!session.warmupDone && tpl.warmup && tpl.warmup.length) { renderWarmup(view, tpl); return; }
     if (dayType === 'run') { renderRunPlayer(view); return; }
     if (dayType === 'racket') { renderRacketPlayer(view); return; }
     if (dayType === 'z2' || dayType === 'rest') { renderSimplePlayer(view); return; }
 
     const items = session.items;
+    if (!items.length) { renderEmptyFreestyle(view); return; }
     const it = items[session.idx];
     const ex = D.EXERCISES[it.exerciseId];
     const st = LTA.store.exerciseState(it.exerciseId);
@@ -195,11 +231,13 @@ LTA.ui = (function () {
 
     h += '<div class="ex-block muted">' + esc(it.block) + '</div>';
     h += '<h2 class="ex-name">' + esc(ex.name) + '</h2>';
-    h += '<div class="ex-target">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + (ex.unit === 'seconds' ? ' s' : ' reps') +
+    h += '<div class="ex-target">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + repUnit(ex) +
       (st.currentWeightKg ? ' @ ' + (deloadW || st.currentWeightKg) + ' ' + unit() : '') +
       (it.deload ? ' <span class="badge deload">deload</span>' : '') + '</div>';
     if (it.notes) h += '<p class="muted">' + esc(it.notes) + '</p>';
+    if (it.phaseNote) h += '<p class="muted">🏋️ ' + esc(it.phaseNote) + ' — heavier, lower reps this block.</p>';
     h += '<ul class="cues">' + ex.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+    if (ex.video) h += '<a class="video-link" href="' + esc(ex.video) + '" target="_blank" rel="noopener">▶ Watch a form breakdown</a>';
 
     if (logged.length) {
       h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + x.weight + '×' + x.reps + '</span>').join('') + '</div>';
@@ -210,7 +248,7 @@ LTA.ui = (function () {
     } else {
       h += '<div class="set-entry">';
       h += stepperHTML('weight', p.weight, ex.incrementKg || 2.5, unit());
-      h += stepperHTML('reps', p.reps, 1, ex.unit === 'seconds' ? 's' : 'reps');
+      h += stepperHTML('reps', p.reps, ex.unit === 'seconds' ? 5 : ex.unit === 'meters' ? 10 : 1, repUnit(ex).trim());
       h += '</div>';
       h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.logSet()">Log set ' + (logged.length + 1) + '</button>';
     }
@@ -222,9 +260,85 @@ LTA.ui = (function () {
         ? '<button class="btn btn-ghost" onclick="LTA.ui.moveEx(1)">Next ›</button>'
         : '<button class="btn btn-primary" onclick="LTA.ui.openFinishModal()">Finish</button>') +
       '</div>';
+    h += '<button class="btn-link" onclick="LTA.ui.openAddExercise()">＋ Add an exercise to this session</button>';
     if (session.idx < items.length - 1) h += '<button class="btn-link" onclick="LTA.ui.openFinishModal()">Finish session early</button>';
     h += '</div>';
     view.innerHTML = h;
+  }
+
+  function repUnit(ex) { return ex.unit === 'seconds' ? ' s' : ex.unit === 'meters' ? ' m' : ' reps'; }
+
+  function renderWarmup(view, tpl) {
+    let h = '<div class="player">';
+    h += '<div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
+      '<div class="player-progress">Warmup</div><span></span></div>';
+    h += '<h2 class="ex-name">Warm up first</h2>';
+    h += '<p class="muted">Tailored for ' + esc(tpl.name) + ' — or run your own 15-min routine, both count.</p>';
+    h += '<ul class="cues">' + tpl.warmup.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.warmupDone()">Warmed up — start session</button>';
+    h += '</div>';
+    view.innerHTML = h;
+  }
+
+  function warmupDone() {
+    session.warmupDone = true;
+    saveDraft();
+    render();
+  }
+
+  function renderEmptyFreestyle(view) {
+    let h = '<div class="player">';
+    h += '<div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
+      '<div class="player-progress">Freestyle</div>' +
+      '<button class="btn-mini pain" onclick="LTA.ui.openPainModal()">Pain?</button></div>';
+    h += '<h2 class="ex-name">Build it as you go</h2>';
+    h += '<p class="muted">Pick your first exercise. Every lift you log still counts toward progression, and pain flags still protect the knee and shoulder.</p>';
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openAddExercise()">＋ Add first exercise</button>';
+    h += '</div>';
+    view.innerHTML = h;
+  }
+
+  function openAddExercise() {
+    let h = '<h3>Add exercise</h3>' +
+      '<input class="input" id="exSearch" placeholder="Search…" oninput="LTA.ui.filterExercises(this.value)">' +
+      '<div id="exList" class="ex-list">' + exerciseListHTML('') + '</div>';
+    modal(h, true);
+  }
+
+  function exerciseListHTML(q) {
+    q = (q || '').toLowerCase();
+    const groups = { power: [], strength: [], accessory: [], rehab: [], core: [], conditioning: [], mobility: [] };
+    Object.values(D.EXERCISES).forEach((e) => {
+      if (q && e.name.toLowerCase().indexOf(q) === -1) return;
+      (groups[e.category] = groups[e.category] || []).push(e);
+    });
+    let h = '';
+    Object.keys(groups).forEach((cat) => {
+      if (!groups[cat].length) return;
+      h += '<div class="ex-cat">' + esc(cat) + '</div>';
+      groups[cat].forEach((e) => {
+        h += '<button class="btn btn-ghost ex-pick" onclick="LTA.ui.addExercise(\'' + e.id + '\')">' + esc(e.name) + '</button>';
+      });
+    });
+    return h || '<p class="muted">Nothing matches.</p>';
+  }
+
+  function filterExercises(q) {
+    const el = $('exList');
+    if (el) el.innerHTML = exerciseListHTML(q);
+  }
+
+  function addExercise(exId) {
+    const ex = D.EXERCISES[exId];
+    session.items.push({
+      exerciseId: exId, block: 'Your picks',
+      sets: 3, repLo: ex.repRange[0], repHi: ex.repRange[1],
+      restSec: S().settings.defaultRestSec, progression: ex.incrementKg ? 'double' : 'rehab',
+    });
+    session.idx = session.items.length - 1;
+    saveDraft();
+    closeModal();
+    render();
   }
 
   function pendingFor(it, ex, st) {
@@ -513,13 +627,17 @@ LTA.ui = (function () {
     const isZ2 = session.dayType === 'z2';
     const s = S();
     let h = '<div class="player"><div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
-      '<div class="player-progress">' + (isZ2 ? 'Zone-2 + mobility' : 'Recovery day') + '</div>' +
+      '<div class="player-progress">' + (isZ2 ? 'Engine day' : 'Recovery day') + '</div>' +
       '<button class="btn-mini pain" onclick="LTA.ui.openPainModal()">Pain?</button></div>';
     if (isZ2) {
       const caution = s.currentWeek && s.currentWeek.kneeCaution;
-      h += '<h2 class="ex-name">Zone-2</h2>';
-      h += '<p>' + (caution ? 'Bike only this week (knee caution). ' : 'Bike or incline walk. ') + '40–60 min, conversational pace.</p>';
-      h += '<label>Minutes done</label>' + stepperHTML('duration', 45, 5, 'min');
+      h += '<h2 class="ex-name">Build the engine</h2>';
+      h += '<p class="muted">Pick one or both — ~30 min each.' + (caution ? ' Knee caution this week: prefer the spin bike over incline walking.' : '') + '</p>';
+      h += '<div class="card"><label class="check"><input type="checkbox" id="didHiit" checked> HIIT spin · anaerobic</label>' +
+        '<ul class="cues">' + D.EXERCISES.hiit_spin.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
+      h += '<div class="card"><label class="check"><input type="checkbox" id="didSteady"> Incline walk · steady state</label>' +
+        '<ul class="cues">' + D.EXERCISES.incline_walk.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
+      h += '<label>Total minutes</label>' + stepperHTML('duration', 30, 5, 'min');
       const sprint = E.sprintSpec();
       if (sprint) {
         h += '<div class="card"><div class="card-title">⚡ Sprint work (unlocked)</div><p>' + esc(sprint.stage.name) + ': ' + esc(sprint.stage.protocol) + '</p>' +
@@ -528,12 +646,15 @@ LTA.ui = (function () {
       h += '<div class="card"><div class="card-title">Mobility flow · 15 min</div><ul class="cues">' +
         D.EXERCISES.mobility_flow.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
     } else {
-      h += '<h2 class="ex-name">Rest / Recovery</h2><p>Full rest, a walk, or:</p>';
-      h += '<ul class="cues">' + D.EXERCISES.mobility_flow.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+      h += '<h2 class="ex-name">Recovery · GMB flow</h2><p class="muted">Skill practice, not a workout — or a walk, or full rest.</p>';
+      h += '<ul class="cues">' + D.EXERCISES.gmb_flow.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+      h += '<a class="video-link" href="' + esc(D.EXERCISES.gmb_flow.video) + '" target="_blank" rel="noopener">▶ GMB locomotion tutorial</a>';
+      h += '<div class="card"><div class="card-title">Optional mobility · 15 min</div><ul class="cues">' +
+        D.EXERCISES.mobility_flow.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
     }
     h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.finishSimple()">Mark done</button></div>';
     view.innerHTML = h;
-    session.pending.__t = { duration: 45 };
+    session.pending.__t = { duration: isZ2 ? 30 : 15 };
   }
 
   function finishSimple() {
@@ -541,6 +662,10 @@ LTA.ui = (function () {
     if (durEl) session.durationMin = Number(durEl.textContent);
     const sp = $('didSprints');
     if (sp && sp.checked) session.didSprints = true;
+    // Record which engine modalities were done so history shows the mix.
+    const hi = $('didHiit'), st = $('didSteady');
+    if (hi && hi.checked) session.sets.push({ exerciseId: 'hiit_spin', weight: 0, reps: 30 });
+    if (st && st.checked) session.sets.push({ exerciseId: 'incline_walk', weight: 0, reps: 30 });
     session.feel = 4;
     completeSession();
   }
@@ -706,10 +831,10 @@ LTA.ui = (function () {
   function applyDaySwap(i) {
     const sel = $('daySwapSel');
     const w = S().currentWeek;
-    w.days[i].dayType = sel.value;
-    w.decisions.push('You changed ' + U.weekdayName(w.days[i].date) + ' to ' + D.DAYS[sel.value].name + '.');
-    LTA.store.save(true);
-    closeModal(); render();
+    closeModal();
+    const decisions = E.doDayInstead(w.days[i].date, sel.value);
+    render();
+    if (decisions && decisions.length) toast(decisions.join(' '));
   }
   function markSkipped(i) { const w = S().currentWeek; w.days[i].status = 'skipped'; LTA.store.save(true); closeModal(); render(); }
   function unskip(i) { const w = S().currentWeek; w.days[i].status = 'planned'; LTA.store.save(true); closeModal(); render(); }
@@ -1026,7 +1151,8 @@ LTA.ui = (function () {
   return {
     init, render, setTab,
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
-    openSubModal, applySub,
+    openSubModal, applySub, openChangeToday, changeToday, warmupDone,
+    openAddExercise, filterExercises, addExercise,
     startRest, stopRest, adjustRest,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
     finishRacket, finishSimple, segPick,
