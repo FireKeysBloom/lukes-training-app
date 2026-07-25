@@ -55,6 +55,19 @@ LTA.engine = (function () {
     if (changed) LTA.store.save();
   }
 
+  // Merge user-created exercises and edits into the static library.
+  // Call after load, import, and any library edit.
+  function applyUserExercises() {
+    const s = S();
+    Object.keys(s.customExercises || {}).forEach((id) => {
+      s.customExercises[id].id = id;
+      D.EXERCISES[id] = Object.assign({ category: 'accessory', equipment: '', repRange: [8, 12], incrementKg: 2.5, cues: [], subs: [], unit: 'reps' }, D.EXERCISES[id], s.customExercises[id]);
+    });
+    Object.keys(s.exerciseEdits || {}).forEach((id) => {
+      if (D.EXERCISES[id]) Object.assign(D.EXERCISES[id], s.exerciseEdits[id]);
+    });
+  }
+
   function dayForDate(dateStr) {
     const w = S().currentWeek;
     return w ? w.days.find((d) => d.date === dateStr) : null;
@@ -568,7 +581,7 @@ LTA.engine = (function () {
   }
 
   return {
-    ensureWeek, generateWeekPlan, dayForDate, prescriptionsForDay, runSpec, sprintSpec,
+    ensureWeek, generateWeekPlan, dayForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount,
   };

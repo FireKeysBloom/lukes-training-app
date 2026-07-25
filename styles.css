@@ -175,6 +175,20 @@ canvas { width: 100%; height: auto; margin-top: 8px; }
 .review-item { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .review-item:last-child { border-bottom: none; }
 
+/* Feature styles shared with the optic theme */
+.today-ex { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; }
+.today-ex-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 14px; }
+.today-ex-row .tx-name { color: var(--muted); }
+.today-ex-row .tx-rx { font-weight: 700; font-variant-numeric: tabular-nums; }
+.setseg { display: flex; gap: 3px; margin: 10px 0 12px; }
+.setseg span { height: 6px; flex: 1; background: var(--line); border-radius: 2px; }
+.setseg span.done { background: var(--accent); }
+.setseg span.now { background: var(--accent2); }
+.prev-line { font-size: 12.5px; line-height: 1.6; color: var(--muted); margin: 2px 0 8px; }
+.prev-line .lb { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; display: block; }
+.my-note { background: #2a2617; border: 1px solid #4a4224; border-radius: 8px; padding: 9px 11px; font-size: 13px; margin: 6px 0 2px; }
+.note-link { margin: 2px 0 6px; text-align: left; padding: 4px 0; }
+
 /* Video links + exercise picker */
 .video-link { display: inline-block; color: var(--accent2); font-weight: 600; font-size: 14px; margin: 4px 0 10px; text-decoration: none; border-bottom: 1px solid var(--accent2); padding-bottom: 1px; }
 .ex-list { max-height: 50dvh; overflow-y: auto; margin-top: 10px; }

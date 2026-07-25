@@ -23,6 +23,7 @@ LTA.ui = (function () {
 
   function init() {
     LTA.store.load();
+    E.applyUserExercises();
     E.ensureWeek();
     resumeDraft();
     render();
@@ -234,10 +235,12 @@ LTA.ui = (function () {
       '<div class="player-progress">' + (session.idx + 1) + ' / ' + items.length + '</div>' +
       '<button class="btn-mini pain" onclick="LTA.ui.openPainModal()">Pain?</button></div>';
 
-    if (ex.category !== 'conditioning' && ex.category !== 'mobility') {
-      h += '<div class="setseg">' + Array.from({ length: it.sets }, (_, i) =>
-        '<span class="' + (i < logged.length ? 'done' : i === logged.length ? 'now' : '') + '"></span>').join('') + '</div>';
-    }
+    // Workout progress: one segment per exercise across the whole session.
+    h += '<div class="setseg">' + items.map((item, i) => {
+      const itemLogged = session.sets.filter((x) => x.exerciseId === item.exerciseId).length;
+      const cls = i === session.idx ? 'now' : (itemLogged >= item.sets || i < session.idx ? 'done' : '');
+      return '<span class="' + cls + '"></span>';
+    }).join('') + '</div>';
     h += '<div class="ex-block muted">' + esc(it.block) + '</div>';
     h += '<h2 class="ex-name">' + esc(ex.name) + '</h2>';
     h += '<div class="ex-target">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + repUnit(ex) +
@@ -251,6 +254,9 @@ LTA.ui = (function () {
       h += '<div class="prev-line"><span class="lb">Previous</span>' +
         st.lastSessionSets.map((x) => (x.weight ? x.weight + ' ' + unit() + ' × ' : '') + x.reps).join(' · ') + '</div>';
     }
+    const myNote = S().exerciseNotes[it.exerciseId];
+    if (myNote) h += '<div class="my-note">📝 ' + esc(myNote) + '</div>';
+    h += '<button class="btn-link note-link" onclick="LTA.ui.openNoteModal(\'' + it.exerciseId + '\')">' + (myNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
 
     if (logged.length) {
       h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + x.weight + '×' + x.reps + '</span>').join('') + '</div>';
@@ -311,8 +317,12 @@ LTA.ui = (function () {
     view.innerHTML = h;
   }
 
+  let listHandler = 'addExercise'; // which LTA.ui fn an exercise tap in the picker calls
+
   function openAddExercise() {
+    listHandler = 'addExercise';
     let h = '<h3>Add exercise</h3>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseForm(null, \'session\')">＋ Create a new exercise</button>' +
       '<input class="input" id="exSearch" placeholder="Search…" oninput="LTA.ui.filterExercises(this.value)">' +
       '<div id="exList" class="ex-list">' + exerciseListHTML('') + '</div>';
     modal(h, true);
@@ -320,6 +330,7 @@ LTA.ui = (function () {
 
   function exerciseListHTML(q) {
     q = (q || '').toLowerCase();
+    const custom = S().customExercises || {};
     const groups = { power: [], strength: [], accessory: [], rehab: [], core: [], conditioning: [], mobility: [] };
     Object.values(D.EXERCISES).forEach((e) => {
       if (q && e.name.toLowerCase().indexOf(q) === -1) return;
@@ -330,7 +341,7 @@ LTA.ui = (function () {
       if (!groups[cat].length) return;
       h += '<div class="ex-cat">' + esc(cat) + '</div>';
       groups[cat].forEach((e) => {
-        h += '<button class="btn btn-ghost ex-pick" onclick="LTA.ui.addExercise(\'' + e.id + '\')">' + esc(e.name) + '</button>';
+        h += '<button class="btn btn-ghost ex-pick" onclick="LTA.ui.' + listHandler + '(\'' + e.id + '\')">' + esc(e.name) + (custom[e.id] ? ' <span class="badge">yours</span>' : '') + '</button>';
       });
     });
     return h || '<p class="muted">Nothing matches.</p>';
@@ -339,6 +350,108 @@ LTA.ui = (function () {
   function filterExercises(q) {
     const el = $('exList');
     if (el) el.innerHTML = exerciseListHTML(q);
+  }
+
+  // ---------- Exercise create / edit ----------
+
+  function openExerciseLibrary() {
+    listHandler = 'openExerciseFormFor';
+    let h = '<h3>Exercise library</h3>' +
+      '<p class="muted">Tap any exercise to edit it — changes stick. Your own exercises can be deleted.</p>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseForm(null, \'settings\')">＋ Create a new exercise</button>' +
+      '<input class="input" id="exSearch" placeholder="Search…" oninput="LTA.ui.filterExercises(this.value)">' +
+      '<div id="exList" class="ex-list">' + exerciseListHTML('') + '</div>';
+    modal(h, true);
+  }
+
+  function openExerciseFormFor(exId) { openExerciseForm(exId, 'settings'); }
+
+  function openExerciseForm(editId, context) {
+    const ex = editId ? D.EXERCISES[editId] : null;
+    const isCustom = editId && !!(S().customExercises || {})[editId];
+    const note = editId ? (S().exerciseNotes[editId] || '') : '';
+    const cats = ['strength', 'accessory', 'power', 'rehab', 'core', 'conditioning', 'mobility'];
+    const units = ['reps', 'seconds', 'meters'];
+    const gates = ['none', 'knee', 'shoulder'];
+    let h = '<h3>' + (editId ? 'Edit ' + esc(ex.name) : 'New exercise') + '</h3>' +
+      '<label>Name</label><input class="input" id="f-name" value="' + esc(ex ? ex.name : '') + '">' +
+      '<label>Equipment</label><input class="input" id="f-equip" value="' + esc(ex ? ex.equipment : '') + '">' +
+      '<label>Category</label><select class="input" id="f-cat">' + cats.map((c) => '<option' + (ex && ex.category === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<div class="set-entry"><div style="flex:1"><label>Rep range low</label><input class="input" id="f-repLo" type="number" value="' + (ex ? ex.repRange[0] : 8) + '"></div>' +
+      '<div style="flex:1"><label>Rep range high</label><input class="input" id="f-repHi" type="number" value="' + (ex ? ex.repRange[1] : 12) + '"></div></div>' +
+      '<div class="set-entry"><div style="flex:1"><label>Weight step (kg)</label><input class="input" id="f-inc" type="number" step="0.25" value="' + (ex ? ex.incrementKg : 2.5) + '"></div>' +
+      '<div style="flex:1"><label>Counted in</label><select class="input" id="f-unit">' + units.map((u) => '<option' + (ex && ex.unit === u ? ' selected' : '') + '>' + u + '</option>').join('') + '</select></div></div>' +
+      '<label>Pain-gate (autoregulation watches this area)</label><select class="input" id="f-gate">' + gates.map((g) => '<option' + (ex && ex.painGate === g ? ' selected' : '') + '>' + g + '</option>').join('') + '</select>' +
+      '<label>Form cues — one per line</label><textarea id="f-cues" rows="3">' + esc(ex ? ex.cues.join('\n') : '') + '</textarea>' +
+      '<label>Video link (optional)</label><input class="input" id="f-video" value="' + esc(ex && ex.video ? ex.video : '') + '">' +
+      '<label>My note (tips / reminders, shown in the session)</label><textarea id="f-note" rows="2">' + esc(note) + '</textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveExerciseForm(' + (editId ? '\'' + editId + '\'' : 'null') + ', \'' + context + '\')">Save</button>';
+    if (isCustom) h += '<button class="btn btn-ghost" onclick="LTA.ui.deleteCustomExercise(\'' + editId + '\')">Delete this exercise</button>';
+    modal(h, true);
+  }
+
+  function saveExerciseForm(editId, context) {
+    const s = S();
+    const name = $('f-name').value.trim();
+    if (!name) { alert('Give it a name.'); return; }
+    const gate = $('f-gate').value;
+    const patch = {
+      name,
+      equipment: $('f-equip').value.trim(),
+      category: $('f-cat').value,
+      repRange: [Math.max(1, Number($('f-repLo').value) || 8), Math.max(1, Number($('f-repHi').value) || 12)],
+      incrementKg: Number($('f-inc').value) || 0,
+      unit: $('f-unit').value,
+      cues: $('f-cues').value.split('\n').map((x) => x.trim()).filter(Boolean),
+      video: $('f-video').value.trim() || undefined,
+      painGate: gate === 'none' ? undefined : gate,
+    };
+    let id = editId;
+    if (!id) {
+      id = 'cx_' + name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+      while (D.EXERCISES[id]) id += '2';
+      s.customExercises[id] = patch;
+    } else if (s.customExercises[id]) {
+      s.customExercises[id] = Object.assign(s.customExercises[id], patch);
+    } else {
+      s.exerciseEdits[id] = Object.assign(s.exerciseEdits[id] || {}, patch);
+    }
+    const note = $('f-note').value.trim();
+    if (note) s.exerciseNotes[id] = note; else delete s.exerciseNotes[id];
+    E.applyUserExercises();
+    LTA.store.save(true);
+    closeModal();
+    if (!editId && context === 'session' && session) { addExercise(id); return; }
+    render();
+    toast(editId ? 'Saved — ' + name + ' updated.' : name + ' added to your library.');
+  }
+
+  function deleteCustomExercise(id) {
+    if (!confirm('Delete this exercise from your library? Past logs keep their history.')) return;
+    const s = S();
+    delete s.customExercises[id];
+    delete s.exerciseNotes[id];
+    delete D.EXERCISES[id];
+    LTA.store.save(true);
+    closeModal();
+    render();
+  }
+
+  function openNoteModal(exId) {
+    const note = S().exerciseNotes[exId] || '';
+    const h = '<h3>Note — ' + esc(D.EXERCISES[exId].name) + '</h3>' +
+      '<textarea id="noteText" rows="4" placeholder="Tips, setup reminders, what worked…">' + esc(note) + '</textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveNote(\'' + exId + '\')">Save note</button>';
+    modal(h, true);
+  }
+
+  function saveNote(exId) {
+    const s = S();
+    const v = $('noteText').value.trim();
+    if (v) s.exerciseNotes[exId] = v; else delete s.exerciseNotes[exId];
+    LTA.store.save(true);
+    closeModal();
+    render();
   }
 
   function addExercise(exId) {
@@ -1088,6 +1201,10 @@ LTA.ui = (function () {
       '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>' +
       '<details><summary class="muted">One-time table setup (run in Supabase SQL editor)</summary><pre class="sql">' + esc(LTA.sync ? LTA.sync.TABLE_SQL : '') + '</pre></details></div>';
 
+    h += '<div class="card"><div class="card-title">Exercise library</div>' +
+      '<p class="muted">Create your own exercises or edit any existing one — cues, rep ranges, videos, notes.</p>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseLibrary()">Manage exercises</button></div>';
+
     h += '<div class="card"><div class="card-title">Data</div>' +
       '<button class="btn btn-ghost" onclick="LTA.store.exportJSON()">Export backup (JSON)</button>' +
       '<label class="btn btn-ghost file-btn">Import backup<input type="file" accept=".json" onchange="LTA.ui.importFile(this)"></label></div>';
@@ -1125,7 +1242,7 @@ LTA.ui = (function () {
     if (!confirm('Importing replaces everything on this device with the backup. Continue?')) { input.value = ''; return; }
     const r = new FileReader();
     r.onload = () => {
-      try { LTA.store.importJSON(r.result); E.ensureWeek(); render(); toast('Backup imported.'); }
+      try { LTA.store.importJSON(r.result); E.applyUserExercises(); E.ensureWeek(); render(); toast('Backup imported.'); }
       catch (e) { alert('Import failed: ' + e.message); }
     };
     r.readAsText(f);
@@ -1166,6 +1283,8 @@ LTA.ui = (function () {
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
     openSubModal, applySub, openChangeToday, changeToday, warmupDone,
     openAddExercise, filterExercises, addExercise,
+    openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
+    openNoteModal, saveNote,
     startRest, stopRest, adjustRest,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
     finishRacket, finishSimple, segPick,

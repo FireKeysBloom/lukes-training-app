@@ -22,7 +22,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 2;
+  const CURRENT_SCHEMA = 3;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -41,6 +41,9 @@ LTA.store = (function () {
         supabaseKey: '',
       },
       exerciseStates: {},
+      customExercises: {},   // user-created exercises, merged into the library on load
+      exerciseEdits: {},     // per-exercise patches over built-ins (name, cues, rep range, …)
+      exerciseNotes: {},     // personal notes shown in the session player
       phase: 'build', // 'build' (hypertrophy ranges) | 'strength' (low-rep ranges on main lifts); alternates after each deload
       runState: { stageId: 0, completionsAtStage: 0, lastRunDate: null, sprintUnlocked: false, sprintStageId: 0, sprintSessions: 0, pendingRegression: false },
       shoulderState: { rungId: 0, sessionsAtRung: 0, extraRehabVolume: false },
@@ -57,6 +60,7 @@ LTA.store = (function () {
   // Sequential migrations: MIGRATIONS[n] upgrades schemaVersion n -> n+1.
   const MIGRATIONS = {
     1: function (s) { s.phase = s.phase || 'build'; },
+    2: function (s) { s.customExercises = {}; s.exerciseEdits = {}; s.exerciseNotes = {}; },
   };
 
   function migrate(s) {
