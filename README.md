@@ -1,6 +1,6 @@
 # Luke's Training App
 
-A single-user, mobile-first training PWA built around Luke's vision: an athletic body on a broad frame — strength, fitness, and resilience; able to play tennis/padel anytime without issue; run a 5k and sprint; sustainable energy.
+A single-user, mobile-first training PWA for building all-round athleticism: strength, conditioning and joint resilience, aimed at performing well in racket sports and running.
 
 Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage` with optional Supabase cloud sync (credentials pasted at runtime in Settings — never in this repo).
 
@@ -10,10 +10,10 @@ Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage
 - **Choose your day** — pull any scheduled session forward and the days trade places, or build a freestyle workout exercise-by-exercise; everything still counts toward progression.
 - **Auto-progression + periodisation** — double progression on lifts, stall detection with 10% resets, deload every 5th week or when readiness drops, and Build ↔ Strength blocks alternating between deloads.
 - **Form first** — per-session tailored warmups, 2–3 cues per exercise, and a video search link to qualified coaches (Squat University, kneesovertoesguy, GMB, E3 Rehab, …) on every lift.
-- **Knee-safe return-to-run** — 11 stages from incline walking to a 5k, gated by pain (≤2/10 during + next morning to advance). Sprint work unlocks after 20 min continuous pain-free running.
-- **Shoulder overhead ladder** — landmine press → barbell OHP in 5 rungs, same pain gating, permanent rotator-cuff/scap/thoracic rehab volume on both upper days.
-- **Morning check-ins** — the day after runs, pressing, or play, the app asks about the knee/shoulder and regresses or advances accordingly.
-- **Weekly review** — sleep/energy/soreness/pain questionnaire that builds next week and explains every adjustment it makes.
+- **Graded return-to-run** — 11 stages from incline walking to a 5k, each gated on discomfort staying ≤2/10 during the run and the next morning before advancing. Sprint work unlocks after 20 min continuous running clears the gate.
+- **Overhead loading ladder** — landmine press → barbell OHP in 5 rungs behind the same gating, with rotator-cuff, lower-trap, serratus and thoracic work as permanent fixtures on both upper days rather than a temporary phase.
+- **Next-morning check-ins** — after runs, overhead pressing or play, the app follows up the next day and advances or regresses the relevant ladder on the answer.
+- **Weekly review** — sleep/energy/soreness questionnaire that builds the following week and explains every adjustment it makes.
 - **Tracking** — e1RM trends, run-stage timeline, pain trends, adherence, all charted.
 
 ## Run locally

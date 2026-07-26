@@ -1,2 +1,7 @@
 .claude/
 .DS_Store
+
+# Personal context — deliberately never published
+PROGRAM-RATIONALE.md
+*-backup.json
+luke-training-*.json
