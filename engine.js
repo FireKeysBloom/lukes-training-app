@@ -176,6 +176,7 @@ LTA.engine = (function () {
     const record = () => { st.lastSessionSets = loggedSets.map((x) => ({ weight: x.weight, reps: x.reps })); };
 
     if (!presc || presc.progression !== 'double' || !ex.incrementKg) { record(); return; }
+    if (st.calibrating || st.justCalibrated) { delete st.justCalibrated; record(); return; } // calibration sets the baseline, not progression
     if (S().currentWeek && S().currentWeek.isDeload) { record(); return; } // deload sessions don't drive progression
 
     if (!st.currentWeightKg) { st.currentWeightKg = topWeight; record(); return; } // first exposure sets the baseline

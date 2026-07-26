@@ -188,6 +188,7 @@ canvas { width: 100%; height: auto; margin-top: 8px; }
 .prev-line { font-size: 12.5px; line-height: 1.6; color: var(--muted); margin: 2px 0 8px; }
 .prev-line .lb { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; display: block; }
 .my-note { background: #2a2617; border: 1px solid #4a4224; border-radius: 8px; padding: 9px 11px; font-size: 13px; margin: 6px 0 2px; }
+.calib-card { background: #16261c; border: 1px solid #2b4836; border-radius: 10px; padding: 11px 13px; font-size: 13px; margin: 8px 0; }
 .note-link { margin: 2px 0 6px; text-align: left; padding: 4px 0; }
 
 /* Video links + exercise picker */

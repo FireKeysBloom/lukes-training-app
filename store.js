@@ -134,7 +134,8 @@ LTA.store = (function () {
 
   function exerciseState(exId) {
     if (!state.exerciseStates[exId]) {
-      state.exerciseStates[exId] = { currentWeightKg: 0, stallCount: 0, lastSessionSets: null };
+      // calibrating: no working weight yet — the session player runs the find-your-weight flow.
+      state.exerciseStates[exId] = { currentWeightKg: 0, stallCount: 0, lastSessionSets: null, calibrating: true };
     }
     return state.exerciseStates[exId];
   }

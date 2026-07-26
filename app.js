@@ -262,6 +262,9 @@ LTA.ui = (function () {
       h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + x.weight + '×' + x.reps + '</span>').join('') + '</div>';
     }
 
+    if (isCalibrating(it, ex, st)) {
+      h += '<div class="calib-card">🎯 <strong>Finding your weight.</strong> Set 1: go light — a weight you’re confident you could lift ~15 times. After each set I’ll ask how much was left in the tank and dial it in from there.</div>';
+    }
     if (ex.category === 'conditioning' || ex.category === 'mobility') {
       h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.logTimedItem(' + session.idx + ')">Mark done</button>';
     } else {
@@ -492,12 +495,24 @@ LTA.ui = (function () {
     $('step-' + field).textContent = p[field];
   }
 
+  function isCalibrating(it, ex, st) {
+    return !!(st.calibrating && it.progression === 'double' && ex.incrementKg > 0 &&
+      (ex.category === 'strength' || ex.category === 'accessory'));
+  }
+
   function logSet() {
     const it = session.items[session.idx];
     const p = session.pending[it.exerciseId];
     session.sets.push({ exerciseId: it.exerciseId, weight: p.weight, reps: p.reps });
     saveDraft();
     const ex = D.EXERCISES[it.exerciseId];
+    const st = LTA.store.exerciseState(it.exerciseId);
+    if (isCalibrating(it, ex, st)) { openCalibModal(); render(); return; } // rest starts after the RIR answer
+    maybeStartRest(it, ex);
+    render();
+  }
+
+  function maybeStartRest(it, ex) {
     // Heavy/technical work auto-regulates: count UP until breathing settles, prescribed rest is the guide.
     const autoreg = S().settings.autoRest !== false && (it.main || (ex && ex.category === 'power'));
     const logged = session.sets.filter((x) => x.exerciseId === it.exerciseId).length;
@@ -507,6 +522,52 @@ LTA.ui = (function () {
     } else if (!lastSetOfLastEx && it.restSec) {
       startRest(it.restSec, false, autoreg);
     }
+  }
+
+  // ---------- First-time weight calibration ----------
+
+  function openCalibModal() {
+    const h = '<h3>How much was left in the tank?</h3>' +
+      '<p class="muted">If you’d pushed to the limit, how many more reps could you have done?</p>' +
+      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'7+\')">7+ — way too light</button>' +
+      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'4-6\')">4–6 — still easy</button>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.calibAnswer(\'2-3\')">2–3 — felt right</button>' +
+      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'0-1\')">0–1 — too heavy</button>';
+    modal(h, false);
+  }
+
+  function calibAnswer(band) {
+    closeModal();
+    const it = session.items[session.idx];
+    const ex = D.EXERCISES[it.exerciseId];
+    const st = LTA.store.exerciseState(it.exerciseId);
+    const p = session.pending[it.exerciseId];
+    const last = session.sets.filter((x) => x.exerciseId === it.exerciseId).slice(-1)[0];
+    const w = last.weight;
+    const inc = ex.incrementKg || 2.5;
+
+    if (band === '2-3' && last.reps >= it.repLo) {
+      st.calibrating = false;
+      st.justCalibrated = true;
+      st.currentWeightKg = w;
+      LTA.store.save(true);
+      toast('🎯 Working weight locked in: ' + w + ' ' + unit() + ' for ' + ex.name + '. Progression takes it from here.');
+    } else {
+      let next;
+      if (w <= 0) {
+        next = inc * (band === '7+' ? 4 : 2);
+      } else if (band === '7+') next = U.roundTo(w * 1.15, inc);
+      else if (band === '4-6') next = U.roundTo(w * 1.08, inc);
+      else if (band === '2-3') next = w; // right effort, reps under target — stay and groove it
+      else next = U.roundTo(w * 0.92, inc);
+      if (band !== '2-3' && next === w) next = band === '0-1' ? Math.max(0, w - inc) : w + inc;
+      p.weight = next;
+      LTA.store.save(true);
+      toast(band === '0-1' ? 'Drop to ' + next + ' ' + unit() + ' next set.' :
+        band === '2-3' ? 'Effort is right — stay at ' + w + ' ' + unit() + ' and build reps.' :
+        'Try ' + next + ' ' + unit() + ' next set.');
+    }
+    maybeStartRest(it, ex);
     render();
   }
 
@@ -1310,7 +1371,7 @@ LTA.ui = (function () {
   return {
     init, render, setTab,
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
-    openSubModal, applySub, openChangeToday, changeToday, warmupDone,
+    openSubModal, applySub, openChangeToday, changeToday, warmupDone, calibAnswer,
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
     openNoteModal, saveNote,
