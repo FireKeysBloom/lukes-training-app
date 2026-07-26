@@ -199,6 +199,34 @@ LTA.data = (function () {
   };
   Object.keys(LOAD_META).forEach((id) => { if (EX[id]) Object.assign(EX[id], LOAD_META[id]); });
 
+  // ---- Tempo & sides ----
+  // tempo is "eccentric-pause-concentric" in beats; X = as fast as you can move it.
+  // Heavy main lifts: controlled down, explosive up (speed is the point of the drive).
+  // Muscle-building work: 3 down / 2 up — time under tension is the point.
+  // Rehab: slower still, with a pause, because control is the adaptation.
+  const TEMPO_BY_CATEGORY = {
+    power: 'X-0-X',
+    strength: '3-0-2',
+    accessory: '3-0-2',
+    rehab: '3-1-2',
+    core: '2-1-2',
+  };
+  const TEMPO_MAIN = '2-0-X'; // main barbell lifts, and anything in MAIN_LIFTS
+
+  // sides: 'each' = all reps on one side, then the other, then rest (rep counts are per side)
+  //        'alternate' = swap sides every rep inside the set
+  const SIDES_META = {
+    bss: 'each', sl_rdl: 'each', atg_split_squat: 'each', patrick_step: 'each',
+    sl_calf_raise: 'each', side_hip_abduction: 'each', side_plank: 'each',
+    hip_airplane: 'each', cable_row_1arm: 'each', landmine_press: 'each',
+    med_ball_chop: 'each', cable_er_9090: 'each', side_lying_er: 'each',
+    dead_bug: 'alternate', pallof_press: 'each',
+  };
+  Object.keys(SIDES_META).forEach((id) => { if (EX[id]) EX[id].sides = SIDES_META[id]; });
+
+  // Isometric holds have no up/down rhythm.
+  ['side_plank', 'dead_hang', 'farmer_carry'].forEach((id) => { if (EX[id]) EX[id].tempo = 'hold'; });
+
   // ---- Prescriptions helper ----
   // main:true + strengthRange → in a Strength phase, the rep target drops to strengthRange (periodisation).
   function p(exerciseId, sets, repLo, repHi, restSec, progression, notes, extra) {
@@ -322,5 +350,11 @@ LTA.data = (function () {
 
   const MAIN_LIFTS = ['back_squat', 'bench_press', 'trap_bar_dl', 'rdl', 'lat_pulldown', 'landmine_press', 'high_incline_db_press', 'seated_db_press', 'standing_db_ohp', 'barbell_ohp'];
 
-  return { EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS };
+  function defaultTempo(category, isMain) {
+    if (category === 'conditioning' || category === 'mobility') return '';
+    if (isMain) return TEMPO_MAIN;
+    return TEMPO_BY_CATEGORY[category] || '';
+  }
+
+  return { EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS, defaultTempo, TEMPO_MAIN };
 })();

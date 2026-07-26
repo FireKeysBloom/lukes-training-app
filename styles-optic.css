@@ -140,6 +140,20 @@ main { flex: 1; padding: 8px 16px 96px; }
 
 .my-note { background: #FBF8E4; border: 1px solid #EFE9C0; border-radius: 8px; padding: 9px 11px; font-size: 12.5px; margin: 6px 0 2px; }
 .calib-card { background: var(--optic); color: var(--optic-ink); border-radius: 10px; padding: 11px 13px; font-size: 13px; margin: 8px 0; }
+
+/* Tempo, sides, manual entry, deletable chips */
+.tempo { display: flex; flex-direction: column; gap: 1px; background: var(--card); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 7px 11px; margin: 6px 0; font-size: 13px; }
+.tempo strong { font-family: var(--cond); font-size: 15px; letter-spacing: .02em; text-transform: uppercase; }
+.tempo span { color: var(--muted); font-size: 12px; }
+.sides-note { background: var(--card2); border-radius: 8px; padding: 7px 11px; margin: 6px 0; font-size: 12.5px; }
+.step-input { width: 100%; border: none; background: transparent; text-align: center; font-family: var(--cond); font-size: 32px; font-weight: 700; color: var(--text); padding: 0; -moz-appearance: textfield; }
+.step-input::-webkit-outer-spin-button, .step-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.step-val { cursor: pointer; }
+button.set-chip { cursor: pointer; font-family: var(--cond); }
+.chip-x { opacity: .65; font-weight: 400; }
+.chip-hint { font-size: 11px; margin: -2px 0 4px; }
+.swap-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.swap-row:last-child { border-bottom: none; }
 .note-link { margin: 2px 0 6px; text-align: left; padding: 4px 0; }
 
 .logged { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
@@ -152,10 +166,12 @@ main { flex: 1; padding: 8px 16px 96px; }
 }
 
 .set-entry { display: flex; gap: 8px; margin: 12px 0 4px; }
-.stepper { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; display: grid; grid-template-columns: 52px 1fr 52px; align-items: center; }
+.stepper { flex: 1 1 0; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 6px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; gap: 2px; align-items: center; }
 .stepper-label { grid-column: 1 / -1; text-align: center; font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .13em; margin-bottom: 4px; }
 .step-btn { background: var(--bg); border: 1px solid var(--line); color: var(--text); font-size: 24px; font-weight: 700; border-radius: 8px; min-height: 52px; }
-.step-val { text-align: center; font-family: var(--cond); font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: .9; }
+.step-val { text-align: center; font-family: var(--cond); font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: .9; overflow: hidden; white-space: nowrap; }
+.step-val-sm { font-size: 19px; }  /* "BW+20" */
+.step-val-xs { font-size: 16px; }  /* "BW+22.5" */
 
 .player-nav { display: flex; gap: 8px; margin-top: 14px; }
 .player-nav .btn { margin: 0; }

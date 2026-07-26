@@ -7,6 +7,8 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
+  const APP_VERSION = '2026.07.26.5';
+  let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
   let rest = null;             // rest timer state
@@ -46,9 +48,35 @@ LTA.ui = (function () {
     render();
     if (LTA.sync) LTA.sync.initialSync();
     if (LTA.sync) LTA.sync.onStatus(renderSyncDot);
-    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
-    }
+    registerServiceWorker();
+    document.addEventListener('visibilitychange', onVisibility);
+  }
+
+  // A new deploy should land without the user knowing anything about caches: when a fresh
+  // worker takes over an already-installed app, reload once so the new code is what's running.
+  function registerServiceWorker() {
+    if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.update().catch(() => {});
+    }).catch(() => {});
+    navigator.serviceWorker.addEventListener('message', (e) => {
+      if (e.data && e.data.version) { swVersion = e.data.version; if (tab === 'settings') render(); }
+    });
+    if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('version');
+  }
+
+  function onVisibility() {
+    if (document.hidden) return;
+    primeAudio();
+    if (session) acquireWakeLock();
+    if (rest) tickRest();   // clocks are timestamp-based, so just re-sync the display
   }
 
   function resumeDraft() {
@@ -187,6 +215,8 @@ LTA.ui = (function () {
       startedAt: Date.now(),
       runDone: false,
     };
+    primeAudio();
+    acquireWakeLock();
     saveDraft();
     render();
   }
@@ -195,6 +225,7 @@ LTA.ui = (function () {
     if (!confirm('Discard this session? Logged sets will be lost.')) return;
     session = null;
     S().draftSession = null;
+    releaseWakeLock();
     LTA.store.save();
     render();
   }
@@ -265,8 +296,15 @@ LTA.ui = (function () {
     const tLo = cmode === 'heavy' ? CALIB_WINDOW[0] : it.repLo;
     const tHi = cmode === 'heavy' ? CALIB_WINDOW[1] : it.repHi;
     h += '<div class="ex-target">' + it.sets + ' × ' + tLo + (tHi > tLo ? '–' + tHi : '') + repUnit(ex) +
+      (ex.sides ? ' per side' : '') +
       (!calibrating && st.currentWeightKg ? ' @ ' + loadWithUnit(ex, deloadW || st.currentWeightKg) : '') +
       (it.deload ? ' <span class="badge deload">deload</span>' : '') + '</div>';
+    if (ex.sides) h += '<div class="sides-note">' + (ex.sides === 'alternate'
+      ? '↔ <strong>Alternate sides</strong> within the set — the count above is per side.'
+      : '↔ <strong>One side, then the other</strong> — both sides make one set, then rest.') + '</div>';
+    const tempo = tempoFor(it, ex);
+    if (tempo) h += '<div class="tempo"><strong>⏱ Tempo ' + esc(tempo) + '</strong><span>' + esc(tempoGloss(tempo)) + '</span></div>';
+    if (it.swappedFrom && D.EXERCISES[it.swappedFrom]) h += '<p class="muted">Standing swap — replaced ' + esc(D.EXERCISES[it.swappedFrom].name) + '.</p>';
     if (it.notes) h += '<p class="muted">' + esc(it.notes) + '</p>';
     if (it.phaseNote) h += '<p class="muted">🏋️ ' + esc(it.phaseNote) + ' — heavier, lower reps this block.</p>';
     h += '<ul class="cues">' + ex.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
@@ -280,7 +318,9 @@ LTA.ui = (function () {
     h += '<button class="btn-link note-link" onclick="LTA.ui.openNoteModal(\'' + it.exerciseId + '\')">' + (myNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
 
     if (logged.length) {
-      h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + fmtLoad(ex, x.weight) + '×' + x.reps + '</span>').join('') + '</div>';
+      h += '<div class="logged">' + logged.map((x, i) =>
+        '<button class="set-chip" title="Tap to delete this set" onclick="LTA.ui.deleteSet(\'' + it.exerciseId + '\',' + i + ')">S' + (i + 1) + ': ' + fmtLoad(ex, x.weight) + '×' + x.reps + ' <span class="chip-x">×</span></button>').join('') +
+        '</div><div class="muted chip-hint">Tap a set to delete it.</div>';
     }
 
     if (calibrating) h += '<div class="calib-card">' + calibBanner(cmode, ex, logged.length) + '</div>';
@@ -323,6 +363,8 @@ LTA.ui = (function () {
 
   function warmupDone() {
     session.warmupDone = true;
+    primeAudio();
+    acquireWakeLock();
     saveDraft();
     render();
   }
@@ -398,7 +440,12 @@ LTA.ui = (function () {
     let h = '<h3>' + (editId ? 'Edit ' + esc(ex.name) : 'New exercise') + '</h3>' +
       '<label>Name</label><input class="input" id="f-name" value="' + esc(ex ? ex.name : '') + '">' +
       '<label>Equipment</label><input class="input" id="f-equip" value="' + esc(ex ? ex.equipment : '') + '">' +
-      '<label>Category</label><select class="input" id="f-cat">' + cats.map((c) => '<option' + (ex && ex.category === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<label>Category</label><select class="input" id="f-cat" onchange="LTA.ui.syncTempoDefault()">' + cats.map((c) => '<option' + (ex && ex.category === c ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<label>Tempo (down-pause-up, X = fast) — auto-filled from the category, edit freely</label>' +
+      '<input class="input" id="f-tempo" placeholder="3-0-2" value="' + esc(ex ? (ex.tempo !== undefined ? ex.tempo : D.defaultTempo(ex.category, D.MAIN_LIFTS.indexOf(ex.id) >= 0)) : D.defaultTempo('strength', false)) + '">' +
+      '<label>Sides</label><select class="input" id="f-sides">' +
+      [['', 'Both together / not applicable'], ['each', 'One side then the other'], ['alternate', 'Alternate sides within the set']]
+        .map((o) => '<option value="' + o[0] + '"' + (ex && (ex.sides || '') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
       '<div class="set-entry"><div style="flex:1"><label>Rep range low</label><input class="input" id="f-repLo" type="number" value="' + (ex ? ex.repRange[0] : 8) + '"></div>' +
       '<div style="flex:1"><label>Rep range high</label><input class="input" id="f-repHi" type="number" value="' + (ex ? ex.repRange[1] : 12) + '"></div></div>' +
       '<div class="set-entry"><div style="flex:1"><label>Weight step (kg)</label><input class="input" id="f-inc" type="number" step="0.25" value="' + (ex ? ex.incrementKg : 2.5) + '"></div>' +
@@ -427,6 +474,8 @@ LTA.ui = (function () {
       cues: $('f-cues').value.split('\n').map((x) => x.trim()).filter(Boolean),
       video: $('f-video').value.trim() || undefined,
       painGate: gate === 'none' ? undefined : gate,
+      tempo: $('f-tempo').value.trim(),
+      sides: $('f-sides').value || undefined,
     };
     let id = editId;
     if (!id) {
@@ -444,8 +493,14 @@ LTA.ui = (function () {
     LTA.store.save(true);
     closeModal();
     if (!editId && context === 'session' && session) { addExercise(id); return; }
+    if (!editId && context === 'swap' && session) { chooseSwap(id); return; }
     render();
     toast(editId ? 'Saved — ' + name + ' updated.' : name + ' added to your library.');
+  }
+
+  function syncTempoDefault() {
+    const cat = $('f-cat'), tempo = $('f-tempo');
+    if (cat && tempo) tempo.value = D.defaultTempo(cat.value, false);
   }
 
   function deleteCustomExercise(id) {
@@ -504,8 +559,75 @@ LTA.ui = (function () {
   function stepperHTML(field, value, step, label, display) {
     return '<div class="stepper"><div class="stepper-label">' + esc(label) + '</div>' +
       '<button class="step-btn" onclick="LTA.ui.step(\'' + field + '\',' + (-step) + ')">−</button>' +
-      '<div class="step-val" id="step-' + field + '">' + esc(display === undefined ? value : display) + '</div>' +
+      '<div class="step-val' + valSizeClass(String(display === undefined ? value : display)) + '" id="step-' + field + '" onclick="LTA.ui.editStep(\'' + field + '\')" title="Tap to type a number">' + esc(display === undefined ? value : display) + '</div>' +
       '<button class="step-btn" onclick="LTA.ui.step(\'' + field + '\',' + step + ')">+</button></div>';
+  }
+
+  // "BW+22.5" needs to shrink to stay inside its cell; "85" should stay big and glanceable.
+  function valSizeClass(s) { return s.length > 6 ? ' step-val-xs' : s.length > 4 ? ' step-val-sm' : ''; }
+
+  // Tap the number to type it in directly, rather than stepping 20 times.
+  function editStep(field) {
+    const el = $('step-' + field);
+    if (!el || el.querySelector('input')) return;
+    const it = session.items[session.idx];
+    const p = session.pending[it.exerciseId];
+    el.innerHTML = '<input class="step-input" id="stepin-' + field + '" type="number" inputmode="decimal" step="any" value="' + p[field] + '">';
+    const inp = $('stepin-' + field);
+    inp.focus();
+    inp.select();
+    inp.addEventListener('blur', () => commitStep(field));
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+  }
+
+  function commitStep(field) {
+    const inp = $('stepin-' + field);
+    if (!inp) return;
+    const it = session.items[session.idx];
+    const ex = it && D.EXERCISES[it.exerciseId];
+    const p = session.pending[it.exerciseId];
+    let v = parseFloat(inp.value);
+    if (isNaN(v)) v = p[field];
+    const floor = field === 'weight' ? floorFor(ex) : 0;
+    p[field] = Math.max(floor, Math.round(v * 100) / 100);
+    const el = $('step-' + field);
+    if (el) {
+      const txt = field === 'weight' ? fmtLoad(ex, p[field]) : String(p[field]);
+      el.textContent = txt;
+      el.className = 'step-val' + valSizeClass(txt);
+    }
+  }
+
+  function deleteSet(exId, nth) {
+    const idxs = [];
+    session.sets.forEach((x, i) => { if (x.exerciseId === exId) idxs.push(i); });
+    const target = idxs[nth];
+    if (target === undefined) return;
+    const s = session.sets[target];
+    if (!confirm('Delete set ' + (nth + 1) + ' (' + fmtLoad(D.EXERCISES[exId], s.weight) + ' × ' + s.reps + ')?')) return;
+    session.sets.splice(target, 1);
+    const st = LTA.store.exerciseState(exId);
+    if (st.calibrating && st.calibGoodSets) st.calibGoodSets = Math.max(0, st.calibGoodSets - 1);
+    saveDraft();
+    render();
+  }
+
+  // ---------- Tempo ----------
+  function tempoFor(it, ex) {
+    if (ex.tempo !== undefined) return ex.tempo;   // explicit, including a user's own edit
+    if (ex.unit === 'seconds' || ex.unit === 'meters') return 'hold';
+    return D.defaultTempo(ex.category, !!it.main || D.MAIN_LIFTS.indexOf(ex.id) >= 0);
+  }
+
+  function tempoGloss(t) {
+    if (t === 'hold') return 'Hold steady — breathe, don’t brace to failure';
+    if (t === 'X-0-X') return 'Max intent every rep · reset fully between reps';
+    const parts = String(t).split('-');
+    if (parts.length !== 3) return '';
+    const out = [parts[0] === 'X' ? 'fast down' : parts[0] + ' beats down'];
+    if (parts[1] !== '0') out.push(parts[1] + ' beat pause');
+    out.push(parts[2] === 'X' ? 'drive up fast' : parts[2] + ' beats up');
+    return out.join(' · ');
   }
 
   function step(field, delta) {
@@ -736,53 +858,88 @@ LTA.ui = (function () {
     render();
   }
 
-  // Exercise substitution
+  // ---------- Exercise substitution ----------
+  let pendingSwap = null;
+
   function openSubModal() {
     const it = session.items[session.idx];
     const ex = D.EXERCISES[it.exerciseId];
     const subs = ex.subs.filter((id) => D.EXERCISES[id]);
-    if (!subs.length) { alert('No substitutions listed for ' + ex.name + '.'); return; }
+    listHandler = 'chooseSwap';
     let h = '<h3>Swap ' + esc(ex.name) + '</h3>';
-    subs.forEach((id, i) => {
-      h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.applySub(' + i + ')">' + esc(D.EXERCISES[id].name) + '</button>';
-    });
+    if (subs.length) {
+      h += '<label>Suggested</label>';
+      subs.forEach((id) => {
+        h += '<button class="btn btn-ghost ex-pick" onclick="LTA.ui.chooseSwap(\'' + id + '\')">' + esc(D.EXERCISES[id].name) + '</button>';
+      });
+    }
+    h += '<label>Or anything else</label>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseForm(null, \'swap\')">＋ Create a new exercise</button>' +
+      '<input class="input" id="exSearch" placeholder="Search the library…" oninput="LTA.ui.filterExercises(this.value)">' +
+      '<div id="exList" class="ex-list">' + exerciseListHTML('') + '</div>';
     modal(h, true);
-    modalData = subs;
   }
 
-  let modalData = null;
-
-  function applySub(i) {
+  function chooseSwap(toId) {
     const it = session.items[session.idx];
-    it.exerciseId = modalData[i];
+    pendingSwap = { from: it.swappedFrom || it.exerciseId, to: toId };
+    const fromName = D.EXERCISES[pendingSwap.from].name;
+    const toName = D.EXERCISES[toId].name;
+    const h = '<h3>' + esc(toName) + '</h3>' +
+      '<p class="muted">Replacing ' + esc(fromName) + '. How long should this stick?</p>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.applySwap(\'session\')">Just today</button>' +
+      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.applySwap(\'program\')">From now on</button>' +
+      '<p class="muted">“From now on” swaps it everywhere ' + esc(fromName) + ' appears in your program, for the rest of the cycle and beyond. Undo it any time in Settings → Exercise library.</p>';
+    modal(h, false);
+  }
+
+  function applySwap(scope) {
+    const it = session.items[session.idx];
+    const from = pendingSwap.from, to = pendingSwap.to;
+    it.exerciseId = to;
+    it.swappedFrom = from;
+    delete session.pending[to];
+    if (scope === 'program') {
+      S().substitutions[from] = to;
+      LTA.store.save(true);
+    }
+    saveDraft();
     closeModal();
     render();
+    toast(scope === 'program'
+      ? D.EXERCISES[to].name + ' replaces ' + D.EXERCISES[from].name + ' from now on.'
+      : 'Swapped for today only.');
   }
 
   // ---------- Rest timer ----------
 
+  // Rest clocks are derived from a start timestamp, never counted down tick by tick —
+  // phones suspend timers for backgrounded pages, so a counter would silently drift or
+  // freeze. This way the clock is always right the moment you look at it again.
   function startRest(sec, advanceAfter, autoreg) {
     stopRest();
     if (!sec) return;
-    rest = { remaining: sec, total: sec, advanceAfter, autoreg: !!autoreg, elapsed: 0, beeped: false };
-    rest.timerId = setInterval(tickRest, 1000);
+    rest = { startedAt: Date.now(), total: sec, advanceAfter, autoreg: !!autoreg, beeped: false };
+    rest.timerId = setInterval(tickRest, 500);
     renderRestBar();
   }
 
+  function restElapsed() { return Math.max(0, Math.round((Date.now() - rest.startedAt) / 1000)); }
+
   function tickRest() {
     if (!rest) return;
+    const elapsed = restElapsed();
     if (rest.autoreg) {
       // Count up; the prescribed rest is a guide, you decide when you're ready.
-      rest.elapsed++;
-      if (!rest.beeped && rest.elapsed >= rest.total) { rest.beeped = true; beep(); }
+      if (!rest.beeped && elapsed >= rest.total) { rest.beeped = true; beep(); }
       const el = $('restTime');
-      if (el) el.textContent = U.fmtSec(rest.elapsed);
+      if (el) el.textContent = U.fmtSec(elapsed);
       const bar = $('restFill');
-      if (bar) bar.style.width = Math.min(100, 100 * rest.elapsed / rest.total) + '%';
+      if (bar) bar.style.width = Math.min(100, 100 * elapsed / rest.total) + '%';
       return;
     }
-    rest.remaining--;
-    if (rest.remaining <= 0) {
+    const remaining = rest.total - elapsed;
+    if (remaining <= 0) {
       beep();
       const adv = rest.advanceAfter;
       stopRest();
@@ -791,9 +948,9 @@ LTA.ui = (function () {
       return;
     }
     const el = $('restTime');
-    if (el) el.textContent = U.fmtSec(rest.remaining);
+    if (el) el.textContent = U.fmtSec(remaining);
     const bar = $('restFill');
-    if (bar) bar.style.width = (100 * rest.remaining / rest.total) + '%';
+    if (bar) bar.style.width = (100 * remaining / rest.total) + '%';
   }
 
   function restReady() {
@@ -803,8 +960,13 @@ LTA.ui = (function () {
     render();
   }
 
-  function adjustRest(d) { if (rest) { rest.remaining = Math.max(1, rest.remaining + d); tickRestPaint(); } }
-  function tickRestPaint() { const el = $('restTime'); if (el) el.textContent = U.fmtSec(rest.remaining); }
+  function adjustRest(d) {
+    if (!rest) return;
+    rest.startedAt += d * 1000;                                  // shifting the start shifts the clock
+    if (restElapsed() > rest.total) rest.startedAt = Date.now() - rest.total * 1000;
+    rest.beeped = false;
+    tickRest();
+  }
 
   function stopRest() {
     if (rest && rest.timerId) clearInterval(rest.timerId);
@@ -821,29 +983,88 @@ LTA.ui = (function () {
       el.className = 'rest-bar';
       document.body.appendChild(el);
     }
+    const elapsed = restElapsed();
     if (rest.autoreg) {
-      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:0%"></div>' +
-        '<div class="rest-row"><span>Rest · guide ' + U.fmtSec(rest.total) + '+</span><strong id="restTime">0:00</strong>' +
+      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:' + Math.min(100, 100 * elapsed / rest.total) + '%"></div>' +
+        '<div class="rest-row"><span>Rest · guide ' + U.fmtSec(rest.total) + '+</span><strong id="restTime">' + U.fmtSec(elapsed) + '</strong>' +
         '<button class="btn-mini" onclick="LTA.ui.restReady()">Ready — go</button></div>' +
         '<div class="rest-hint">Breathing settled, same weight feels doable? That’s ready.</div>';
     } else {
-      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:100%"></div>' +
-        '<div class="rest-row"><span>Rest</span><strong id="restTime">' + U.fmtSec(rest.remaining) + '</strong>' +
+      const remaining = Math.max(0, rest.total - elapsed);
+      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:' + (100 * remaining / rest.total) + '%"></div>' +
+        '<div class="rest-row"><span>Rest</span><strong id="restTime">' + U.fmtSec(remaining) + '</strong>' +
         '<button class="btn-mini" onclick="LTA.ui.adjustRest(-15)">−15</button>' +
         '<button class="btn-mini" onclick="LTA.ui.adjustRest(15)">+15</button>' +
         '<button class="btn-mini" onclick="LTA.ui.stopRest()">Skip</button></div>';
     }
   }
 
+  // ---------- Audio ----------
+  // Phones only let a page make noise if the audio was unlocked by a real tap, and a
+  // suspended AudioContext silently does nothing. So we prime on every user gesture we
+  // get, and keep a plain <audio> element as the more reliable path on iOS.
+  let beepEl = null;
+  let beepUrl = null;
+
+  function buildBeep() {
+    const sr = 8000, dur = 0.22, n = Math.round(sr * dur);
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const wr = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    wr(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); wr(8, 'WAVE');
+    wr(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    wr(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const fade = Math.min(1, Math.min(i, n - i) / (sr * 0.012));
+      v.setInt16(44 + i * 2, Math.sin(2 * Math.PI * 880 * i / sr) * 26000 * fade, true);
+    }
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+
+  function primeAudio() {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (!beepEl) {
+        beepUrl = beepUrl || buildBeep();
+        beepEl = new Audio(beepUrl);
+        beepEl.preload = 'auto';
+        beepEl.load();
+      }
+    } catch (e) { /* no audio available */ }
+  }
+
   function beep() {
+    let played = false;
+    try {
+      if (beepEl) { beepEl.currentTime = 0; const pr = beepEl.play(); if (pr && pr.catch) pr.catch(() => {}); played = true; }
+    } catch (e) { played = false; }
+    if (played) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
       const o = audioCtx.createOscillator();
       const g = audioCtx.createGain();
       o.connect(g); g.connect(audioCtx.destination);
       o.frequency.value = 880; g.gain.value = 0.15;
       o.start(); o.stop(audioCtx.currentTime + 0.25);
     } catch (e) { /* silent */ }
+  }
+
+  // ---------- Keep the screen on during a session ----------
+  let wakeLock = null;
+  function acquireWakeLock() {
+    try {
+      if (!('wakeLock' in navigator) || wakeLock) return;
+      navigator.wakeLock.request('screen').then((wl) => {
+        wakeLock = wl;
+        wl.addEventListener('release', () => { wakeLock = null; });
+      }).catch(() => {});
+    } catch (e) { /* unsupported */ }
+  }
+  function releaseWakeLock() {
+    try { if (wakeLock) wakeLock.release(); } catch (e) { /* noop */ }
+    wakeLock = null;
   }
 
   // ---------- Run player ----------
@@ -1101,6 +1322,7 @@ LTA.ui = (function () {
 
   function completeSession() {
     stopRest();
+    releaseWakeLock();
     const sess = session;
     session = null;
     S().draftSession = null;
@@ -1469,8 +1691,18 @@ LTA.ui = (function () {
       '<details><summary class="muted">One-time table setup (run in Supabase SQL editor)</summary><pre class="sql">' + esc(LTA.sync ? LTA.sync.TABLE_SQL : '') + '</pre></details></div>';
 
     h += '<div class="card"><div class="card-title">Exercise library</div>' +
-      '<p class="muted">Create your own exercises or edit any existing one — cues, rep ranges, videos, notes.</p>' +
-      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseLibrary()">Manage exercises</button></div>';
+      '<p class="muted">Create your own exercises or edit any existing one — cues, tempo, rep ranges, videos, notes.</p>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.openExerciseLibrary()">Manage exercises</button>';
+    const subs = s.substitutions || {};
+    const subIds = Object.keys(subs).filter((id) => D.EXERCISES[id] && D.EXERCISES[subs[id]]);
+    if (subIds.length) {
+      h += '<div class="card-title" style="margin-top:14px">Standing swaps</div>';
+      subIds.forEach((id) => {
+        h += '<div class="swap-row"><span>' + esc(D.EXERCISES[id].name) + ' → <strong>' + esc(D.EXERCISES[subs[id]].name) + '</strong></span>' +
+          '<button class="btn-mini" onclick="LTA.ui.undoSwap(\'' + id + '\')">Undo</button></div>';
+      });
+    }
+    h += '</div>';
 
     h += '<div class="card"><div class="card-title">Data</div>' +
       '<button class="btn btn-ghost" onclick="LTA.store.exportJSON()">Export backup (JSON)</button>' +
@@ -1491,8 +1723,33 @@ LTA.ui = (function () {
     h += '<div class="card danger"><div class="card-title">Danger zone</div>' +
       '<button class="btn btn-ghost" onclick="LTA.ui.resetAll()">Reset everything</button></div>';
 
+    h += '<div class="card"><div class="card-title">App version</div>' +
+      '<p class="muted">Build <strong>' + esc(APP_VERSION) + '</strong>' + (swVersion ? ' · cache ' + esc(swVersion) : '') + '</p>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.forceUpdate()">Force update now</button>' +
+      '<p class="muted">Clears the offline cache and reloads. Your data is untouched.</p></div>';
+
     h += '<p class="muted center">Luke’s Training App · install: Safari share → “Add to Home Screen”</p>';
     view.innerHTML = h;
+  }
+
+  function undoSwap(id) {
+    delete S().substitutions[id];
+    LTA.store.save(true);
+    render();
+    toast('Standing swap removed — the original exercise is back.');
+  }
+
+  // Escape hatch: if the phone is ever stuck on an old build, this wipes the cache and reloads.
+  function forceUpdate() {
+    const done = () => setTimeout(() => location.reload(), 150);
+    try {
+      const jobs = [];
+      if (window.caches) jobs.push(caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k)))));
+      if ('serviceWorker' in navigator) {
+        jobs.push(navigator.serviceWorker.getRegistrations().then((rs) => Promise.all(rs.map((r) => r.unregister()))));
+      }
+      Promise.all(jobs).then(done, done);
+    } catch (e) { done(); }
   }
 
   function saveSupabase() {
@@ -1550,7 +1807,8 @@ LTA.ui = (function () {
   return {
     init, render, setTab,
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
-    openSubModal, applySub, openChangeToday, changeToday, warmupDone, calibAnswer, calibPainAnswer,
+    openSubModal, chooseSwap, applySwap, openChangeToday, changeToday, warmupDone, calibAnswer, calibPainAnswer,
+    editStep, deleteSet, undoSwap, forceUpdate,
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
     openNoteModal, saveNote,

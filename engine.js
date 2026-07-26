@@ -131,6 +131,13 @@ LTA.engine = (function () {
       }));
     }
 
+    // Standing swaps ("from now on") replace the prescribed exercise wherever it appears.
+    const subs = s.substitutions || {};
+    blocks.forEach((b) => b.items.forEach((it) => {
+      const to = subs[it.exerciseId];
+      if (to && D.EXERCISES[to]) { it.swappedFrom = it.exerciseId; it.exerciseId = to; }
+    }));
+
     if (w && w.kneeCaution && dayType === 'z2') {
       blocks[0].items.forEach((it) => { it.notes = 'Bike only this week (knee caution)'; });
     }
