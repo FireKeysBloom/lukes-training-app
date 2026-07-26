@@ -179,7 +179,9 @@ LTA.engine = (function () {
     if (st.calibrating || st.justCalibrated) { delete st.justCalibrated; record(); return; } // calibration sets the baseline, not progression
     if (S().currentWeek && S().currentWeek.isDeload) { record(); return; } // deload sessions don't drive progression
 
-    if (!st.currentWeightKg) { st.currentWeightKg = topWeight; record(); return; } // first exposure sets the baseline
+    // First ever exposure adopts whatever you used as the baseline. Keyed off history, not the
+    // weight itself — 0 is a legitimate working load (bodyweight) and must still progress.
+    if (!prevSets) { st.currentWeightKg = topWeight; record(); return; }
 
     const allSetsAtTop = loggedSets.length >= presc.sets && loggedSets.every((x) => x.reps >= presc.repHi && x.weight >= st.currentWeightKg);
     if (allSetsAtTop) {

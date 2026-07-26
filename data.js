@@ -177,6 +177,28 @@ LTA.data = (function () {
   ex('mobility_flow', 'Mobility Flow', 'mobility', 'mat + roller', [15, 15], 0,
     ['Couch stretch 2×45s/side', '90/90 hip switches ×10', 'Thoracic rotations ×8/side', 'Cross-body shoulder 2×30s'], [], { unit: 'seconds' });
 
+  // ---- Load semantics ----
+  // barKg      = weight of the empty implement; it's the floor for that lift (never shows "BW").
+  // bodyweight = your own bodyweight is the base load, so 0 displays as "BW" and any added
+  //              load reads "BW+x". Everything else (dumbbells, cables, machines) shows a
+  //              plain number, with 0 meaning the unloaded/bodyweight version.
+  const LOAD_META = {
+    back_squat: { barKg: 20 }, bench_press: { barKg: 20 }, rdl: { barKg: 20 },
+    hip_thrust: { barKg: 20 }, glute_bridge: { barKg: 20 }, barbell_ohp: { barKg: 20 },
+    trap_bar_dl: { barKg: 25 },
+    landmine_press: { barKg: 10 }, // ~half the bar carries to the pressing end
+    box_jump: { bodyweight: true }, broad_jump: { bodyweight: true },
+    pull_up: { bodyweight: true }, scap_pull_up: { bodyweight: true },
+    pushup_plus: { bodyweight: true }, dead_hang: { bodyweight: true },
+    side_plank: { bodyweight: true }, dead_bug: { bodyweight: true },
+    hip_airplane: { bodyweight: true }, patrick_step: { bodyweight: true },
+    atg_split_squat: { bodyweight: true }, bss: { bodyweight: true },
+    sl_calf_raise: { bodyweight: true }, tibialis_raise: { bodyweight: true },
+    band_lateral_walk: { bodyweight: true }, side_hip_abduction: { bodyweight: true },
+    serratus_wall_slide: { bodyweight: true }, thoracic_ext_roller: { bodyweight: true },
+  };
+  Object.keys(LOAD_META).forEach((id) => { if (EX[id]) Object.assign(EX[id], LOAD_META[id]); });
+
   // ---- Prescriptions helper ----
   // main:true + strengthRange → in a Strength phase, the rep target drops to strengthRange (periodisation).
   function p(exerciseId, sets, repLo, repHi, restSec, progression, notes, extra) {

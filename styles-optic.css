@@ -144,7 +144,9 @@ main { flex: 1; padding: 8px 16px 96px; }
 
 .logged { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .set-chip {
-  background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
+  /* court blue with white text — 7.2:1 contrast, comfortably above AA */
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+  border-radius: 6px; padding: 4px 10px;
   font-family: var(--cond); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums;
   transform: skewX(-8deg);
 }

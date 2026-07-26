@@ -19,6 +19,23 @@ LTA.ui = (function () {
 
   function unit() { return S().settings.units === 'lb' ? 'lb' : 'kg'; }
 
+  // ---------- Load display ----------
+  // Stored loads are always plain numbers (0 = no external load), so tracking, progression,
+  // sync and export are untouched. "BW" is purely how 0 is rendered.
+  function floorFor(ex) { return (ex && ex.barKg) || 0; }
+
+  function fmtLoad(ex, w) {
+    if (ex && ex.barKg) return String(w);            // a bar is never bodyweight
+    if (!w) return 'BW';
+    if (ex && ex.bodyweight) return 'BW+' + w;       // you're lifting yourself, plus this
+    return String(w);
+  }
+
+  function loadWithUnit(ex, w) {
+    const s = fmtLoad(ex, w);
+    return s === 'BW' ? s : s + ' ' + unit();
+  }
+
   // ---------- boot ----------
 
   function init() {
@@ -243,8 +260,12 @@ LTA.ui = (function () {
     }).join('') + '</div>';
     h += '<div class="ex-block muted">' + esc(it.block) + '</div>';
     h += '<h2 class="ex-name">' + esc(ex.name) + '</h2>';
-    h += '<div class="ex-target">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + repUnit(ex) +
-      (st.currentWeightKg ? ' @ ' + (deloadW || st.currentWeightKg) + ' ' + unit() : '') +
+    const calibrating = isCalibrating(it, ex, st);
+    const cmode = calibrating ? calibMode(it, ex) : null;
+    const tLo = cmode === 'heavy' ? CALIB_WINDOW[0] : it.repLo;
+    const tHi = cmode === 'heavy' ? CALIB_WINDOW[1] : it.repHi;
+    h += '<div class="ex-target">' + it.sets + ' × ' + tLo + (tHi > tLo ? '–' + tHi : '') + repUnit(ex) +
+      (!calibrating && st.currentWeightKg ? ' @ ' + loadWithUnit(ex, deloadW || st.currentWeightKg) : '') +
       (it.deload ? ' <span class="badge deload">deload</span>' : '') + '</div>';
     if (it.notes) h += '<p class="muted">' + esc(it.notes) + '</p>';
     if (it.phaseNote) h += '<p class="muted">🏋️ ' + esc(it.phaseNote) + ' — heavier, lower reps this block.</p>';
@@ -252,24 +273,22 @@ LTA.ui = (function () {
     if (ex.video) h += '<a class="video-link" href="' + esc(ex.video) + '" target="_blank" rel="noopener">▶ Watch a form breakdown</a>';
     if (st.lastSessionSets && st.lastSessionSets.length) {
       h += '<div class="prev-line"><span class="lb">Previous</span>' +
-        st.lastSessionSets.map((x) => (x.weight ? x.weight + ' ' + unit() + ' × ' : '') + x.reps).join(' · ') + '</div>';
+        st.lastSessionSets.map((x) => loadWithUnit(ex, x.weight) + ' × ' + x.reps).join(' · ') + '</div>';
     }
     const myNote = S().exerciseNotes[it.exerciseId];
     if (myNote) h += '<div class="my-note">📝 ' + esc(myNote) + '</div>';
     h += '<button class="btn-link note-link" onclick="LTA.ui.openNoteModal(\'' + it.exerciseId + '\')">' + (myNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
 
     if (logged.length) {
-      h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + x.weight + '×' + x.reps + '</span>').join('') + '</div>';
+      h += '<div class="logged">' + logged.map((x, i) => '<span class="set-chip">S' + (i + 1) + ': ' + fmtLoad(ex, x.weight) + '×' + x.reps + '</span>').join('') + '</div>';
     }
 
-    if (isCalibrating(it, ex, st)) {
-      h += '<div class="calib-card">🎯 <strong>Finding your weight.</strong> Set 1: go light — a weight you’re confident you could lift ~15 times. After each set I’ll ask how much was left in the tank and dial it in from there.</div>';
-    }
+    if (calibrating) h += '<div class="calib-card">' + calibBanner(cmode, ex, logged.length) + '</div>';
     if (ex.category === 'conditioning' || ex.category === 'mobility') {
       h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.logTimedItem(' + session.idx + ')">Mark done</button>';
     } else {
       h += '<div class="set-entry">';
-      h += stepperHTML('weight', p.weight, ex.incrementKg || 2.5, unit());
+      h += stepperHTML('weight', p.weight, ex.incrementKg || 2.5, unit(), fmtLoad(ex, p.weight));
       h += stepperHTML('reps', p.reps, ex.unit === 'seconds' ? 5 : ex.unit === 'meters' ? 10 : 1, repUnit(ex).trim());
       h += '</div>';
       h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.logSet()">Log set ' + (logged.length + 1) + '</button>';
@@ -473,31 +492,35 @@ LTA.ui = (function () {
   function pendingFor(it, ex, st) {
     if (!session.pending[it.exerciseId]) {
       const last = st.lastSessionSets;
+      const w = it.deload && st.currentWeightKg ? U.roundTo(st.currentWeightKg * 0.9, ex.incrementKg || 2.5) : (st.currentWeightKg || (last ? last[0].weight : 0));
       session.pending[it.exerciseId] = {
-        weight: it.deload && st.currentWeightKg ? U.roundTo(st.currentWeightKg * 0.9, ex.incrementKg || 2.5) : (st.currentWeightKg || (last ? last[0].weight : 0)),
+        weight: Math.max(floorFor(ex), w),
         reps: last ? last[0].reps : it.repLo,
       };
     }
     return session.pending[it.exerciseId];
   }
 
-  function stepperHTML(field, value, step, label) {
+  function stepperHTML(field, value, step, label, display) {
     return '<div class="stepper"><div class="stepper-label">' + esc(label) + '</div>' +
       '<button class="step-btn" onclick="LTA.ui.step(\'' + field + '\',' + (-step) + ')">−</button>' +
-      '<div class="step-val" id="step-' + field + '">' + value + '</div>' +
+      '<div class="step-val" id="step-' + field + '">' + esc(display === undefined ? value : display) + '</div>' +
       '<button class="step-btn" onclick="LTA.ui.step(\'' + field + '\',' + step + ')">+</button></div>';
   }
 
   function step(field, delta) {
     const it = session.items[session.idx];
+    const ex = it && D.EXERCISES[it.exerciseId];
     const p = session.pending[it.exerciseId];
-    p[field] = Math.max(0, Math.round((p[field] + delta) * 100) / 100);
-    $('step-' + field).textContent = p[field];
+    const floor = field === 'weight' ? floorFor(ex) : 0;
+    p[field] = Math.max(floor, Math.round((p[field] + delta) * 100) / 100);
+    $('step-' + field).textContent = field === 'weight' ? fmtLoad(ex, p[field]) : p[field];
   }
 
   function isCalibrating(it, ex, st) {
-    return !!(st.calibrating && it.progression === 'double' && ex.incrementKg > 0 &&
-      (ex.category === 'strength' || ex.category === 'accessory'));
+    if (!st.calibrating || it.progression !== 'double' || !(ex.incrementKg > 0)) return false;
+    if (ex.bodyweight) return false; // starts at BW by definition; load gets added by progression
+    return ex.category === 'strength' || ex.category === 'accessory' || ex.category === 'power';
   }
 
   function logSet() {
@@ -507,7 +530,7 @@ LTA.ui = (function () {
     saveDraft();
     const ex = D.EXERCISES[it.exerciseId];
     const st = LTA.store.exerciseState(it.exerciseId);
-    if (isCalibrating(it, ex, st)) { openCalibModal(); render(); return; } // rest starts after the RIR answer
+    if (isCalibrating(it, ex, st)) { openCalibFlow(it, ex); render(); return; } // rest starts after the answer
     maybeStartRest(it, ex);
     render();
   }
@@ -525,14 +548,111 @@ LTA.ui = (function () {
   }
 
   // ---------- First-time weight calibration ----------
+  // How you find a working weight depends on what you're training:
+  //   heavy     — main barbell compounds. Never hunt for the number at 3–5 reps: calibrate in an
+  //               8–10 window even during a Strength block, then DERIVE the heavy working weight.
+  //               Needs two qualifying sets, so it settles over ~2 sessions, biased light.
+  //   power     — output, not effort. Right load = heaviest one that stays fast.
+  //   endurance — carries/hangs. "Could you have kept going?", grip vs posture.
+  //   standard  — machines and isolation; RIR at mid reps, converges in one session.
+  // Anything pain-gated asks about pain FIRST and locks further from failure (3–4 RIR).
 
-  function openCalibModal() {
-    const h = '<h3>How much was left in the tank?</h3>' +
-      '<p class="muted">If you’d pushed to the limit, how many more reps could you have done?</p>' +
-      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'7+\')">7+ — way too light</button>' +
-      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'4-6\')">4–6 — still easy</button>' +
-      '<button class="btn btn-primary btn-big" onclick="LTA.ui.calibAnswer(\'2-3\')">2–3 — felt right</button>' +
-      '<button class="btn btn-ghost btn-big" onclick="LTA.ui.calibAnswer(\'0-1\')">0–1 — too heavy</button>';
+  const CALIB_WINDOW = [8, 10];
+  // reps-to-failure → approximate % of 1RM
+  const RTF_PCT = { 1: 1.00, 2: 0.95, 3: 0.93, 4: 0.90, 5: 0.87, 6: 0.85, 7: 0.83, 8: 0.80, 9: 0.77, 10: 0.75, 11: 0.73, 12: 0.70 };
+  function pctFor(rtf) { return RTF_PCT[Math.max(1, Math.min(12, Math.round(rtf)))]; }
+
+  function calibMode(it, ex) {
+    if (ex.category === 'power') return 'power';
+    if (ex.unit === 'meters' || ex.unit === 'seconds') return 'endurance';
+    if (it.main && ex.category === 'strength') return 'heavy';
+    return 'standard';
+  }
+
+  function calibBanner(mode, ex, setsDone) {
+    const lead = '🎯 <strong>Finding your weight.</strong> ';
+    if (setsDone === 0) {
+      if (mode === 'power') return lead + 'Start light — this is about speed, not strain. I’ll ask whether every rep stayed explosive.';
+      if (mode === 'endurance') return lead + 'Start with something you could carry comfortably. I’ll ask whether grip or posture gave out first.';
+      if (mode === 'heavy') return lead + 'We’ll find this at <strong>8–10 reps</strong> — safer and more accurate than testing near your limit — then work out your heavy weight from it. Start light.';
+      return lead + 'Set 1: go light — a weight you’re confident you could lift ~15 times.';
+    }
+    if (mode === 'heavy') return lead + 'Still in the 8–10 window. Two solid sets and I’ll lock it in and calculate your working weight.';
+    return lead + 'Adjusting from your answer — keep going until it feels right.';
+  }
+
+  function openCalibFlow(it, ex) {
+    if (ex.painGate) openCalibPain(it, ex);
+    else openCalibEffort(it, ex);
+  }
+
+  function openCalibPain(it, ex) {
+    const area = ex.painGate === 'knee' ? 'knee' : 'shoulder';
+    const h = '<h3>' + area.charAt(0).toUpperCase() + area.slice(1) + ' first</h3>' +
+      '<p class="muted">On this exercise pain sets the weight, not effort. Any discomfort on that set?</p>' +
+      painSliderHTML('calibPain', 0) +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.calibPainAnswer()">Next</button>';
+    modal(h, false);
+  }
+
+  function calibPainAnswer() {
+    const sev = Number(($('slider-calibPain') || {}).value || 0);
+    const it = session.items[session.idx];
+    const ex = D.EXERCISES[it.exerciseId];
+    closeModal();
+    if (sev > 0) session.painFlags.push({ area: ex.painGate, severity: sev, when: 'during', date: session.date, context: 'calibration' });
+    if (sev >= 3) {
+      const st = LTA.store.exerciseState(it.exerciseId);
+      const last = session.sets.filter((x) => x.exerciseId === it.exerciseId).slice(-1)[0];
+      const inc = ex.incrementKg || 2.5;
+      const backed = Math.max(floorFor(ex), U.roundTo(last.weight * 0.9, inc));
+      st.calibrating = false; st.justCalibrated = true; st.calibGoodSets = 0;
+      st.currentWeightKg = backed;
+      LTA.store.save(true);
+      toast('Pain ' + sev + '/10 — ending the ramp here. Working weight set at ' + loadWithUnit(ex, backed) + ', and the rehab work stays light.');
+      maybeStartRest(it, ex);
+      render();
+      return;
+    }
+    openCalibEffort(it, ex);
+  }
+
+  function cbtn(band, label, primary) {
+    return '<button class="btn ' + (primary ? 'btn-primary' : 'btn-ghost') + ' btn-big" onclick="LTA.ui.calibAnswer(\'' + band + '\')">' + label + '</button>';
+  }
+
+  function openCalibEffort(it, ex) {
+    const mode = calibMode(it, ex);
+    let h;
+    if (mode === 'power') {
+      h = '<h3>Was the last rep as explosive as the first?</h3>' +
+        '<p class="muted">Power is set by output, not effort — the right load is the heaviest one that stays fast.</p>' +
+        cbtn('up', 'Yes — every rep crisp', false) +
+        cbtn('hold', 'Slight drop-off', true) +
+        cbtn('down', 'No — clearly slower', false);
+    } else if (mode === 'endurance') {
+      h = '<h3>Could you have kept going?</h3>' +
+        '<p class="muted">Grip giving out is the point. Posture breaking down means it’s too heavy.</p>' +
+        cbtn('7+', 'Easily — lots left', false) +
+        cbtn('4-6', 'A bit more in me', false) +
+        cbtn('2-3', 'That was about right', true) +
+        cbtn('0-1', 'Posture broke down early', false);
+    } else if (ex.painGate) {
+      h = '<h3>How much was left in the tank?</h3>' +
+        '<p class="muted">For this one we stop further from failure — 3–4 in reserve is the target.</p>' +
+        cbtn('7+', '7+ — way too light', false) +
+        cbtn('4-6', '5–6 — still easy', false) +
+        cbtn('3-4', '3–4 — right for this', true) +
+        cbtn('0-1', '0–2 — too close to failure', false);
+    } else {
+      h = '<h3>How much was left in the tank?</h3>' +
+        '<p class="muted">If you’d pushed to the limit, how many more reps could you have done?' +
+        (mode === 'heavy' ? ' Aim to answer this on a set of 8–10.' : '') + '</p>' +
+        cbtn('7+', '7+ — way too light', false) +
+        cbtn('4-6', '4–6 — still easy', false) +
+        cbtn('2-3', '2–3 — felt right', true) +
+        cbtn('0-1', '0–1 — too heavy', false);
+    }
     modal(h, false);
   }
 
@@ -545,30 +665,61 @@ LTA.ui = (function () {
     const last = session.sets.filter((x) => x.exerciseId === it.exerciseId).slice(-1)[0];
     const w = last.weight;
     const inc = ex.incrementKg || 2.5;
+    const floor = floorFor(ex);
+    const mode = calibMode(it, ex);
 
-    if (band === '2-3' && last.reps >= it.repLo) {
-      st.calibrating = false;
-      st.justCalibrated = true;
-      st.currentWeightKg = w;
-      LTA.store.save(true);
-      toast('🎯 Working weight locked in: ' + w + ' ' + unit() + ' for ' + ex.name + '. Progression takes it from here.');
-    } else {
-      let next;
-      if (w <= 0) {
-        next = inc * (band === '7+' ? 4 : 2);
-      } else if (band === '7+') next = U.roundTo(w * 1.15, inc);
-      else if (band === '4-6') next = U.roundTo(w * 1.08, inc);
-      else if (band === '2-3') next = w; // right effort, reps under target — stay and groove it
-      else next = U.roundTo(w * 0.92, inc);
-      if (band !== '2-3' && next === w) next = band === '0-1' ? Math.max(0, w - inc) : w + inc;
-      p.weight = next;
-      LTA.store.save(true);
-      toast(band === '0-1' ? 'Drop to ' + next + ' ' + unit() + ' next set.' :
-        band === '2-3' ? 'Effort is right — stay at ' + w + ' ' + unit() + ' and build reps.' :
-        'Try ' + next + ' ' + unit() + ' next set.');
+    const lockBand = mode === 'power' ? 'hold' : (ex.painGate ? '3-4' : '2-3');
+    const minReps = (mode === 'power' || mode === 'endurance') ? 0 : (mode === 'heavy' ? CALIB_WINDOW[0] : it.repLo);
+    const needGood = mode === 'heavy' ? 2 : 1; // heavy lifts confirm across two sets (often two sessions)
+
+    if (band === lockBand && last.reps >= minReps) {
+      st.calibGoodSets = (st.calibGoodSets || 0) + 1;
+      if (st.calibGoodSets >= needGood) {
+        let working = w;
+        if (mode === 'heavy') working = deriveWorkingWeight(w, last.reps, ex.painGate ? 3.5 : 2.5, it, inc);
+        working = Math.max(floor, working);
+        st.calibrating = false; st.justCalibrated = true; st.calibGoodSets = 0;
+        st.currentWeightKg = working;
+        LTA.store.save(true);
+        toast(mode === 'heavy'
+          ? '🎯 ' + ex.name + ' set at ' + loadWithUnit(ex, working) + ' for ' + it.repLo + '–' + it.repHi + ' — worked out from that 8–10 set, deliberately a touch light. Progression takes it from here.'
+          : '🎯 Working weight locked in: ' + loadWithUnit(ex, working) + ' for ' + ex.name + '. Progression takes it from here.');
+      } else {
+        LTA.store.save(true);
+        toast('Good set. One more like that at ' + loadWithUnit(ex, w) + ' and I’ll lock it in.');
+      }
+      maybeStartRest(it, ex);
+      render();
+      return;
     }
+
+    st.calibGoodSets = 0;
+    let next = w;
+    const bump = (f) => Math.max(floor, U.roundTo(w * f, inc));
+    if (mode === 'power') {
+      next = band === 'up' ? bump(1.10) : band === 'down' ? bump(0.90) : w;
+    } else if (band === '7+') next = w <= floor ? Math.max(floor + inc * 3, bump(1.15)) : bump(1.15);
+    else if (band === '4-6') next = w <= floor ? Math.max(floor + inc * 2, bump(1.08)) : bump(1.08);
+    else if (band === '0-1') next = bump(0.90);
+    else next = w; // right effort, reps short of the window — stay and build reps
+
+    if (next === w && band !== lockBand && band !== 'hold') {
+      next = (band === '0-1' || band === 'down') ? Math.max(floor, w - inc) : w + inc;
+    }
+    p.weight = next;
+    LTA.store.save(true);
+    if (next === w) toast('Effort is right — stay at ' + loadWithUnit(ex, w) + ' and build reps toward ' + (mode === 'heavy' ? CALIB_WINDOW[0] : it.repLo) + '.');
+    else if (next < w) toast('Drop to ' + loadWithUnit(ex, next) + ' next set.');
+    else toast('Try ' + loadWithUnit(ex, next) + ' next set.');
     maybeStartRest(it, ex);
     render();
+  }
+
+  // From a calibration set, estimate 1RM, then take the % that matches the block's target reps.
+  // Shaved 5% so the first working weight lands slightly light rather than slightly heavy.
+  function deriveWorkingWeight(w, reps, rir, it, inc) {
+    const e1 = w / pctFor(reps + rir);
+    return U.roundTo(e1 * pctFor(it.repLo + 2.5) * 0.95, inc);
   }
 
   function logTimedItem(idx) {
@@ -1135,13 +1286,13 @@ LTA.ui = (function () {
 
   function renderProgress(view) {
     const s = S();
-    const liftsWithData = D.MAIN_LIFTS.filter((id) => s.sessions.some((x) => (x.sets || []).some((st) => st.exerciseId === id)));
+    const liftsWithData = chartableLifts();
     if (!chartLift || !liftsWithData.includes(chartLift)) chartLift = liftsWithData[0] || null;
 
     let h = '<div class="pagehead"><h2>Progress</h2><div>' + topInfo() + '</div></div>';
 
     // Strength
-    h += '<div class="card"><div class="card-title">Strength — estimated 1RM</div>';
+    h += '<div class="card"><div class="card-title">' + (chartLift && repsChart(chartLift) ? 'Strength — best set (reps)' : 'Strength — estimated 1RM') + '</div>';
     if (chartLift) {
       h += '<select class="input" onchange="LTA.ui.pickLift(this.value)">' +
         liftsWithData.map((id) => '<option value="' + id + '"' + (id === chartLift ? ' selected' : '') + '>' + esc(D.EXERCISES[id].name) + '</option>').join('') + '</select>';
@@ -1185,18 +1336,46 @@ LTA.ui = (function () {
 
   function pickLift(id) { chartLift = id; render(); }
 
+  // Anything loggable with history — main lifts first, then accessories and your own exercises.
+  function chartableLifts() {
+    const counts = {};
+    S().sessions.forEach((sess) => {
+      const seen = {};
+      (sess.sets || []).forEach((x) => {
+        if (seen[x.exerciseId]) return;
+        seen[x.exerciseId] = 1;
+        counts[x.exerciseId] = (counts[x.exerciseId] || 0) + 1;
+      });
+    });
+    return Object.keys(counts).filter((id) => {
+      const e = D.EXERCISES[id];
+      return e && (e.category === 'strength' || e.category === 'accessory' || e.category === 'power');
+    }).sort((a, b) => (D.MAIN_LIFTS.indexOf(b) >= 0) - (D.MAIN_LIFTS.indexOf(a) >= 0));
+  }
+
+  // Bodyweight work never carries a meaningful e1RM — chart reps instead so progress shows.
+  function repsChart(exId) {
+    const e = D.EXERCISES[exId];
+    if (!e || !e.bodyweight) return false;
+    return !S().sessions.some((sess) => (sess.sets || []).some((x) => x.exerciseId === exId && x.weight > 0));
+  }
+
   function drawCharts() {
     const s = S();
     // e1RM chart
     const lc = $('liftChart');
     if (lc && chartLift) {
+      const byReps = repsChart(chartLift);
       const pts = [];
       s.sessions.forEach((sess) => {
         let best = 0;
-        (sess.sets || []).forEach((x) => { if (x.exerciseId === chartLift) best = Math.max(best, U.e1rm(x.weight, x.reps)); });
+        (sess.sets || []).forEach((x) => {
+          if (x.exerciseId !== chartLift) return;
+          best = Math.max(best, byReps ? x.reps : U.e1rm(x.weight, x.reps));
+        });
         if (best > 0) pts.push({ x: sess.date, y: Math.round(best * 10) / 10 });
       });
-      drawLine(lc, [{ points: pts, color: css('--accent') }], { yLabel: unit() });
+      drawLine(lc, [{ points: pts, color: css('--accent') }], { yLabel: byReps ? 'reps' : unit() });
     }
     // pain chart
     const pc = $('painChart');
@@ -1371,7 +1550,7 @@ LTA.ui = (function () {
   return {
     init, render, setTab,
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
-    openSubModal, applySub, openChangeToday, changeToday, warmupDone, calibAnswer,
+    openSubModal, applySub, openChangeToday, changeToday, warmupDone, calibAnswer, calibPainAnswer,
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
     openNoteModal, saveNote,

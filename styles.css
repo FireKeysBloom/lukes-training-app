@@ -100,7 +100,7 @@ main { flex: 1; padding: 8px 16px 96px; }
 .cues li::before { content: '·'; position: absolute; left: 2px; color: var(--accent); font-weight: 900; }
 
 .logged { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-.set-chip { background: var(--card2); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 600; }
+.set-chip { background: var(--accent2); border: 1px solid var(--accent2); color: #08172b; border-radius: 999px; padding: 5px 11px; font-size: 13px; font-weight: 700; }
 
 .set-entry { display: flex; gap: 12px; margin: 12px 0 4px; }
 .stepper { flex: 1; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; }
