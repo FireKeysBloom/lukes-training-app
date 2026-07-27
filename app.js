@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.07.26.7';
+  const APP_VERSION = '2026.07.26.8';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -1707,11 +1707,16 @@ LTA.ui = (function () {
     } else {
       h += '<p class="muted">Add your project details, then sign in. Both values are safe to store here — they identify the project, they don’t grant access on their own.</p>';
     }
-    h += '<details' + (configured ? '' : ' open') + '><summary class="muted">Project details</summary>' +
-      '<label>Project URL</label><input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co" value="' + esc(s.settings.supabaseUrl) + '">' +
+    // Once signed in and synced, the raw key field and one-time setup SQL are done
+    // business — fold them both under one "Advanced" disclosure instead of showing
+    // two open sections for steps that only matter during setup or troubleshooting.
+    const settled = user && st.state === 'ok';
+    h += '<details' + (settled ? '' : ' open') + '><summary class="muted">' + (settled ? 'Advanced / troubleshooting' : 'Project details') + '</summary>';
+    h += '<label>Project URL</label><input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co" value="' + esc(s.settings.supabaseUrl) + '">' +
       '<label>Anon key</label><input class="input" id="sbKey" type="password" placeholder="paste anon public key" value="' + esc(s.settings.supabaseKey) + '">' +
-      '<button class="btn btn-primary" onclick="LTA.ui.saveSupabase()">Save project details</button></details>' +
-      '<details><summary class="muted">One-time table setup (run in Supabase SQL editor)</summary><pre class="sql">' + esc(LTA.sync ? LTA.sync.TABLE_SQL : '') + '</pre></details></div>';
+      '<button class="btn btn-primary" onclick="LTA.ui.saveSupabase()">Save project details</button>' +
+      '<details' + (settled ? '' : ' open') + '><summary class="muted">One-time table setup (run in Supabase SQL editor)</summary><pre class="sql">' + esc(LTA.sync ? LTA.sync.TABLE_SQL : '') + '</pre></details>' +
+      '</details></div>';
 
     h += '<div class="card"><div class="card-title">Exercise library</div>' +
       '<p class="muted">Create your own exercises or edit any existing one — cues, tempo, rep ranges, videos, notes.</p>' +
