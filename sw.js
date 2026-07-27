@@ -8,7 +8,7 @@
  *   - fonts and icons are CACHE-FIRST — they never change, no point re-fetching.
  * Bumping CACHE still wipes old entries, but it's no longer load-bearing.
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = 'lta-' + VERSION;
 const SHELL = [
   './', 'index.html', 'styles-optic.css', 'store.js', 'data.js', 'sync.js',

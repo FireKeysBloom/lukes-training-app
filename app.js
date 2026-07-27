@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.07.26.5';
+  const APP_VERSION = '2026.07.26.6';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -1683,11 +1683,28 @@ LTA.ui = (function () {
     const st = LTA.sync ? LTA.sync.getStatus() : { state: 'off' };
     let h = '<div class="pagehead"><h2>Settings</h2></div>';
 
-    h += '<div class="card"><div class="card-title">Cloud sync (Supabase)</div>' +
+    const user = LTA.sync ? LTA.sync.currentUser() : null;
+    const configured = !!(s.settings.supabaseUrl && s.settings.supabaseKey);
+    h += '<div class="card"><div class="card-title">Cloud sync (Supabase)</div>';
+    if (user) {
+      h += '<p>Signed in as <strong>' + esc(user.email) + '</strong></p>' +
+        '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>' +
+        '<button class="btn btn-ghost" onclick="LTA.ui.syncNow()">Sync now</button>' +
+        '<button class="btn btn-ghost" onclick="LTA.ui.doSignOut()">Sign out</button>';
+    } else if (configured) {
+      h += '<p class="muted">Sign in to sync. Your data is scoped to your account — the project key on its own can’t reach it.</p>' +
+        '<label>Email</label><input class="input" id="authEmail" type="email" autocomplete="username" placeholder="you@example.com">' +
+        '<label>Password</label><input class="input" id="authPass" type="password" autocomplete="current-password" placeholder="at least 6 characters">' +
+        '<button class="btn btn-primary" onclick="LTA.ui.doSignIn()">Sign in</button>' +
+        '<button class="btn btn-ghost" onclick="LTA.ui.doSignUp()">Create account</button>' +
+        '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>';
+    } else {
+      h += '<p class="muted">Add your project details, then sign in. Both values are safe to store here — they identify the project, they don’t grant access on their own.</p>';
+    }
+    h += '<details' + (configured ? '' : ' open') + '><summary class="muted">Project details</summary>' +
       '<label>Project URL</label><input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co" value="' + esc(s.settings.supabaseUrl) + '">' +
       '<label>Anon key</label><input class="input" id="sbKey" type="password" placeholder="paste anon public key" value="' + esc(s.settings.supabaseKey) + '">' +
-      '<button class="btn btn-primary" onclick="LTA.ui.saveSupabase()">Save & connect</button>' +
-      '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>' +
+      '<button class="btn btn-primary" onclick="LTA.ui.saveSupabase()">Save project details</button></details>' +
       '<details><summary class="muted">One-time table setup (run in Supabase SQL editor)</summary><pre class="sql">' + esc(LTA.sync ? LTA.sync.TABLE_SQL : '') + '</pre></details></div>';
 
     h += '<div class="card"><div class="card-title">Exercise library</div>' +
@@ -1757,8 +1774,47 @@ LTA.ui = (function () {
     s.settings.supabaseUrl = $('sbUrl').value.trim();
     s.settings.supabaseKey = $('sbKey').value.trim();
     LTA.store.save(true);
-    if (LTA.sync) LTA.sync.initialSync();
-    toast('Saved. Connecting…');
+    render();
+    toast('Project saved. Now sign in.');
+  }
+
+  function authFields() {
+    const email = ($('authEmail') || {}).value || '';
+    const pass = ($('authPass') || {}).value || '';
+    return { email: email.trim(), pass };
+  }
+
+  function doSignIn() {
+    const { email, pass } = authFields();
+    if (!email || !pass) { alert('Enter your email and password.'); return; }
+    toast('Signing in…');
+    LTA.sync.signIn(email, pass)
+      .then(() => LTA.sync.initialSync())
+      .then(() => { render(); toast('Signed in — syncing.'); })
+      .catch((e) => { render(); alert('Sign-in failed: ' + e.message); });
+  }
+
+  function doSignUp() {
+    const { email, pass } = authFields();
+    if (!email || !pass) { alert('Enter an email and a password (6+ characters).'); return; }
+    toast('Creating account…');
+    LTA.sync.signUp(email, pass)
+      .then((r) => {
+        render();
+        if (r.confirmationRequired) alert('Account created. Check your email for the confirmation link, then sign in.');
+        else { LTA.sync.initialSync(); toast('Account created — syncing.'); }
+      })
+      .catch((e) => { render(); alert('Could not create the account: ' + e.message); });
+  }
+
+  function doSignOut() {
+    if (!confirm('Sign out on this device? Your training data stays here.')) return;
+    LTA.sync.signOut().then(() => { render(); toast('Signed out.'); });
+  }
+
+  function syncNow() {
+    toast('Syncing…');
+    LTA.sync.push().then((ok) => { render(); toast(ok ? 'Synced.' : 'Sync failed — see status.'); });
   }
 
   function importFile(input) {
@@ -1820,7 +1876,7 @@ LTA.ui = (function () {
     saveCheckIn,
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,
     submitReview, pickLift,
-    saveSupabase, importFile, saveTraining, resetAll,
+    saveSupabase, doSignIn, doSignUp, doSignOut, syncNow, importFile, saveTraining, resetAll,
     closeModal,
   };
 })();
