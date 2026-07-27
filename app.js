@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.07.26.6';
+  const APP_VERSION = '2026.07.26.7';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -112,11 +112,17 @@ LTA.ui = (function () {
   }
 
   function renderSyncDot() {
-    const el = $('syncDot');
-    if (!el || !LTA.sync) return;
+    if (!LTA.sync) return;
     const st = LTA.sync.getStatus();
-    el.className = 'sync-dot ' + st.state;
-    el.title = st.state + (st.detail ? ': ' + st.detail : '');
+    const el = $('syncDot');
+    if (el) {
+      el.className = 'sync-dot ' + st.state;
+      el.title = st.state + (st.detail ? ': ' + st.detail : '');
+    }
+    // Keep the Settings status line honest too — updating the text node rather than
+    // re-rendering, so it can't wipe whatever is half-typed in the fields above it.
+    const txt = $('syncStatusText');
+    if (txt) txt.textContent = st.state + (st.detail ? ' — ' + st.detail : '');
   }
 
   function topInfo() {
@@ -1688,7 +1694,7 @@ LTA.ui = (function () {
     h += '<div class="card"><div class="card-title">Cloud sync (Supabase)</div>';
     if (user) {
       h += '<p>Signed in as <strong>' + esc(user.email) + '</strong></p>' +
-        '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>' +
+        '<p class="muted">Status: <span id="syncStatusText">' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</span></p>' +
         '<button class="btn btn-ghost" onclick="LTA.ui.syncNow()">Sync now</button>' +
         '<button class="btn btn-ghost" onclick="LTA.ui.doSignOut()">Sign out</button>';
     } else if (configured) {
@@ -1697,7 +1703,7 @@ LTA.ui = (function () {
         '<label>Password</label><input class="input" id="authPass" type="password" autocomplete="current-password" placeholder="at least 6 characters">' +
         '<button class="btn btn-primary" onclick="LTA.ui.doSignIn()">Sign in</button>' +
         '<button class="btn btn-ghost" onclick="LTA.ui.doSignUp()">Create account</button>' +
-        '<p class="muted">Status: ' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</p>';
+        '<p class="muted">Status: <span id="syncStatusText">' + esc(st.state) + (st.detail ? ' — ' + esc(st.detail) : '') + '</span></p>';
     } else {
       h += '<p class="muted">Add your project details, then sign in. Both values are safe to store here — they identify the project, they don’t grant access on their own.</p>';
     }

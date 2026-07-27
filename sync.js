@@ -163,6 +163,20 @@ LTA.sync = (function () {
     return { apikey: p.key, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   }
 
+  // A bare status code sends you hunting; name the likely cause instead.
+  async function explain(res) {
+    let body = null;
+    try { body = await res.json(); } catch (e) { /* not json */ }
+    const msg = body && (body.message || body.hint || body.error_description || body.msg);
+    if (res.status === 404 || (body && body.code === 'PGRST205')) {
+      return 'the "' + TABLE + '" table is missing — run the one-time table setup SQL below';
+    }
+    if (res.status === 401 || res.status === 403) {
+      return 'permission denied — check the RLS policies in the table setup SQL below';
+    }
+    return (msg || 'HTTP ' + res.status);
+  }
+
   // ---------- sync ----------
   async function pull() {
     const p = project();
@@ -173,7 +187,7 @@ LTA.sync = (function () {
     setStatus('syncing', 'pulling');
     try {
       const res = await fetch(p.url + '/rest/v1/' + TABLE + '?user_id=eq.' + auth.userId + '&select=state,updated_at', { headers: h });
-      if (!res.ok) throw new Error('HTTP ' + res.status + ' — check the table exists and its policies are set');
+      if (!res.ok) throw new Error(await explain(res));
       const rows = await res.json();
       setStatus('ok', 'pulled');
       return rows.length ? rows[0] : null;
@@ -199,7 +213,7 @@ LTA.sync = (function () {
         headers: Object.assign({}, h, { Prefer: 'resolution=merge-duplicates' }),
         body: JSON.stringify([{ user_id: auth.userId, state: payload, updated_at: st.updatedAt }]),
       });
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) throw new Error(await explain(res));
       setStatus('ok', 'synced ' + new Date().toLocaleTimeString());
       return true;
     } catch (e) {
