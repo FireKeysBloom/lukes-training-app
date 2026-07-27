@@ -100,8 +100,16 @@ LTA.store = (function () {
 
   function onSave(fn) { listeners.push(fn); }
 
+  // Credentials never travel with the data. A backup file gets shared, emailed and
+  // synced to places the training log doesn't matter but a key would.
+  function withoutCredentials(s) {
+    const copy = JSON.parse(JSON.stringify(s));
+    if (copy.settings) { delete copy.settings.supabaseUrl; delete copy.settings.supabaseKey; }
+    return copy;
+  }
+
   function exportJSON() {
-    const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(withoutCredentials(state), null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'luke-training-' + LTA.util.todayStr() + '.json';
@@ -114,7 +122,12 @@ LTA.store = (function () {
     if (typeof parsed.schemaVersion !== 'number' || !parsed.settings) {
       throw new Error('That file does not look like a training-app export.');
     }
+    // This device's own credentials win — a backup should never repoint your sync.
+    const keepUrl = (state && state.settings && state.settings.supabaseUrl) || '';
+    const keepKey = (state && state.settings && state.settings.supabaseKey) || '';
     state = migrate(parsed);
+    state.settings.supabaseUrl = keepUrl || state.settings.supabaseUrl || '';
+    state.settings.supabaseKey = keepKey || state.settings.supabaseKey || '';
     save(true);
     return state;
   }
@@ -142,7 +155,7 @@ LTA.store = (function () {
     return state.exerciseStates[exId];
   }
 
-  return { load, save, onSave, exportJSON, importJSON, replaceState, reset, getState, exerciseState, KEY };
+  return { load, save, onSave, exportJSON, importJSON, replaceState, reset, getState, exerciseState, withoutCredentials, KEY };
 })();
 
 /* LTA.util — small shared helpers */

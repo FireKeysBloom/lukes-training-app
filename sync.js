@@ -65,10 +65,13 @@ LTA.sync = (function () {
     setStatus('syncing', 'pushing');
     try {
       const st = LTA.store.getState();
+      // Push the training data, not the keys — no reason to store a credential inside
+      // the row that credential unlocks.
+      const payload = LTA.store.withoutCredentials(st);
       const res = await fetch(c.url + '/rest/v1/app_state', {
         method: 'POST',
         headers: Object.assign(headers(c.key), { Prefer: 'resolution=merge-duplicates' }),
-        body: JSON.stringify([{ id: ROW_ID, state: st, updated_at: st.updatedAt }]),
+        body: JSON.stringify([{ id: ROW_ID, state: payload, updated_at: st.updatedAt }]),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       setStatus('ok', 'synced ' + new Date().toLocaleTimeString());
