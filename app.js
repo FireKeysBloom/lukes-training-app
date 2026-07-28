@@ -1072,10 +1072,12 @@ LTA.ui = (function () {
     return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
   }
 
+  // Deliberately doesn't touch AudioContext here: merely constructing/resuming one is
+  // enough to make iOS Safari steal audio focus from whatever's playing in the
+  // background (e.g. Spotify), even though the beep itself plays through beepEl below.
+  // AudioContext stays a lazy fallback inside beep(), reached only if beepEl fails.
   function primeAudio() {
     try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
       if (!beepEl) {
         beepUrl = beepUrl || buildBeep();
         beepEl = new Audio(beepUrl);
