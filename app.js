@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.07.26.8';
+  const APP_VERSION = '2026.07.26.9';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -109,6 +109,7 @@ LTA.ui = (function () {
     else if (tab === 'settings') renderSettings(view);
     renderSyncDot();
     maybeCheckInModal();
+    if (rest) renderRestBar(); // refresh the "resting from X" label immediately on nav, not on the next tick
   }
 
   function renderSyncDot() {
@@ -362,9 +363,29 @@ LTA.ui = (function () {
     h += '<h2 class="ex-name">Warm up first</h2>';
     h += '<p class="muted">Tailored for ' + esc(tpl.name) + ' — or run your own 15-min routine, both count.</p>';
     h += '<ul class="cues">' + tpl.warmup.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+    const myNote = S().warmupNotes[tpl.id];
+    if (myNote) h += '<div class="my-note">📝 ' + esc(myNote) + '</div>';
+    h += '<button class="btn-link note-link" onclick="LTA.ui.openWarmupNoteModal(\'' + tpl.id + '\')">' + (myNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
     h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.warmupDone()">Warmed up — start session</button>';
     h += '</div>';
     view.innerHTML = h;
+  }
+
+  function openWarmupNoteModal(dayType) {
+    const note = S().warmupNotes[dayType] || '';
+    const h = '<h3>Warmup note — ' + esc(D.DAYS[dayType].name) + '</h3>' +
+      '<textarea id="warmupNoteText" rows="4" placeholder="Anything you want reminding of before this one — an extra drill, how long to spend on it…">' + esc(note) + '</textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveWarmupNote(\'' + dayType + '\')">Save note</button>';
+    modal(h, true);
+  }
+
+  function saveWarmupNote(dayType) {
+    const s = S();
+    const v = $('warmupNoteText').value.trim();
+    if (v) s.warmupNotes[dayType] = v; else delete s.warmupNotes[dayType];
+    LTA.store.save(true);
+    closeModal();
+    render();
   }
 
   function warmupDone() {
@@ -667,11 +688,20 @@ LTA.ui = (function () {
     // Heavy/technical work auto-regulates: count UP until breathing settles, prescribed rest is the guide.
     const autoreg = S().settings.autoRest !== false && (it.main || (ex && ex.category === 'power'));
     const logged = session.sets.filter((x) => x.exerciseId === it.exerciseId).length;
-    const lastSetOfLastEx = session.idx === session.items.length - 1 && logged >= it.sets;
-    if (logged >= it.sets && session.idx < session.items.length - 1) {
-      startRest(it.restSec, true, autoreg); // advance when rest ends / ready
+    const st = LTA.store.exerciseState(it.exerciseId);
+    // Hitting the prescribed set count doesn't mean "done" while still finding the
+    // weight — a heavy lift can need more attempts than the nominal set count before
+    // it locks in. Don't let the exercise get treated as finished (and auto-advanced
+    // away from) until calibration is actually settled.
+    const doneWithExercise = logged >= it.sets && !st.calibrating;
+    const lastSetOfLastEx = session.idx === session.items.length - 1 && doneWithExercise;
+    if (doneWithExercise && session.idx < session.items.length - 1) {
+      // Resolve the target now, at the idx you're on when the set finishes — not
+      // whatever idx you happen to be viewing when the rest clock runs out, since
+      // you're free to look ahead and come back while it counts.
+      startRest(it.restSec, Math.min(session.items.length - 1, session.idx + 1), autoreg, ex.name);
     } else if (!lastSetOfLastEx && it.restSec) {
-      startRest(it.restSec, false, autoreg);
+      startRest(it.restSec, null, autoreg, ex.name);
     }
   }
 
@@ -859,8 +889,9 @@ LTA.ui = (function () {
   }
 
   function moveEx(delta) {
+    // Deliberately doesn't touch the rest timer — looking ahead at what's coming
+    // (or back at what you just did) shouldn't reset a clock that's mid-count.
     session.idx = Math.max(0, Math.min(session.items.length - 1, session.idx + delta));
-    stopRest();
     render();
   }
 
@@ -922,12 +953,19 @@ LTA.ui = (function () {
   // Rest clocks are derived from a start timestamp, never counted down tick by tick —
   // phones suspend timers for backgrounded pages, so a counter would silently drift or
   // freeze. This way the clock is always right the moment you look at it again.
-  function startRest(sec, advanceAfter, autoreg) {
+  function startRest(sec, advanceToIdx, autoreg, forExercise) {
     stopRest();
     if (!sec) return;
-    rest = { startedAt: Date.now(), total: sec, advanceAfter, autoreg: !!autoreg, beeped: false };
+    rest = { startedAt: Date.now(), total: sec, advanceToIdx: (advanceToIdx === undefined ? null : advanceToIdx), autoreg: !!autoreg, beeped: false, forExercise: forExercise || '' };
     rest.timerId = setInterval(tickRest, 500);
     renderRestBar();
+  }
+
+  // Land at the resolved target, but never pull you backward — if you've already
+  // wandered ahead to peek at what's coming, the rest ending shouldn't yank you back.
+  function landAt(targetIdx) {
+    if (targetIdx == null || !session) return;
+    session.idx = Math.max(session.idx, Math.min(session.items.length - 1, targetIdx));
   }
 
   function restElapsed() { return Math.max(0, Math.round((Date.now() - rest.startedAt) / 1000)); }
@@ -947,9 +985,9 @@ LTA.ui = (function () {
     const remaining = rest.total - elapsed;
     if (remaining <= 0) {
       beep();
-      const adv = rest.advanceAfter;
+      const target = rest.advanceToIdx;
       stopRest();
-      if (adv && session) { session.idx = Math.min(session.items.length - 1, session.idx + 1); }
+      landAt(target);
       render();
       return;
     }
@@ -960,9 +998,9 @@ LTA.ui = (function () {
   }
 
   function restReady() {
-    const adv = rest && rest.advanceAfter;
+    const target = rest && rest.advanceToIdx;
     stopRest();
-    if (adv && session) { session.idx = Math.min(session.items.length - 1, session.idx + 1); }
+    landAt(target);
     render();
   }
 
@@ -990,14 +1028,19 @@ LTA.ui = (function () {
       document.body.appendChild(el);
     }
     const elapsed = restElapsed();
+    // Only label it once you've navigated elsewhere — no need to state the obvious
+    // while you're still looking at the exercise the rest belongs to.
+    const viewingOther = session && rest.forExercise && D.EXERCISES[session.items[session.idx].exerciseId] &&
+      D.EXERCISES[session.items[session.idx].exerciseId].name !== rest.forExercise;
+    const label = viewingOther ? '<div class="rest-for">Resting from ' + esc(rest.forExercise) + '</div>' : '';
     if (rest.autoreg) {
-      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:' + Math.min(100, 100 * elapsed / rest.total) + '%"></div>' +
+      el.innerHTML = label + '<div class="rest-fill" id="restFill" style="width:' + Math.min(100, 100 * elapsed / rest.total) + '%"></div>' +
         '<div class="rest-row"><span>Rest · guide ' + U.fmtSec(rest.total) + '+</span><strong id="restTime">' + U.fmtSec(elapsed) + '</strong>' +
         '<button class="btn-mini" onclick="LTA.ui.restReady()">Ready — go</button></div>' +
         '<div class="rest-hint">Breathing settled, same weight feels doable? That’s ready.</div>';
     } else {
       const remaining = Math.max(0, rest.total - elapsed);
-      el.innerHTML = '<div class="rest-fill" id="restFill" style="width:' + (100 * remaining / rest.total) + '%"></div>' +
+      el.innerHTML = label + '<div class="rest-fill" id="restFill" style="width:' + (100 * remaining / rest.total) + '%"></div>' +
         '<div class="rest-row"><span>Rest</span><strong id="restTime">' + U.fmtSec(remaining) + '</strong>' +
         '<button class="btn-mini" onclick="LTA.ui.adjustRest(-15)">−15</button>' +
         '<button class="btn-mini" onclick="LTA.ui.adjustRest(15)">+15</button>' +
@@ -1878,7 +1921,7 @@ LTA.ui = (function () {
     editStep, deleteSet, undoSwap, forceUpdate,
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
-    openNoteModal, saveNote,
+    openNoteModal, saveNote, openWarmupNoteModal, saveWarmupNote,
     startRest, stopRest, adjustRest, restReady,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
     finishRacket, finishSimple, segPick,

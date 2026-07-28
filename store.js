@@ -22,7 +22,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 4;
+  const CURRENT_SCHEMA = 5;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -44,6 +44,7 @@ LTA.store = (function () {
       customExercises: {},   // user-created exercises, merged into the library on load
       exerciseEdits: {},     // per-exercise patches over built-ins (name, cues, rep range, …)
       exerciseNotes: {},     // personal notes shown in the session player
+      warmupNotes: {},       // personal notes shown on the pre-session warmup screen, keyed by dayType
       substitutions: {},     // { originalExerciseId: replacementId } — standing swaps applied to the program
       phase: 'build', // 'build' (hypertrophy ranges) | 'strength' (low-rep ranges on main lifts); alternates after each deload
       runState: { stageId: 0, completionsAtStage: 0, lastRunDate: null, sprintUnlocked: false, sprintStageId: 0, sprintSessions: 0, pendingRegression: false },
@@ -63,6 +64,7 @@ LTA.store = (function () {
     1: function (s) { s.phase = s.phase || 'build'; },
     2: function (s) { s.customExercises = {}; s.exerciseEdits = {}; s.exerciseNotes = {}; },
     3: function (s) { s.substitutions = {}; },
+    4: function (s) { s.warmupNotes = {}; },
   };
 
   function migrate(s) {
