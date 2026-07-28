@@ -76,7 +76,7 @@ LTA.ui = (function () {
     if (document.hidden) return;
     primeAudio();
     if (session) acquireWakeLock();
-    if (rest) tickRest();   // clocks are timestamp-based, so just re-sync the display
+    if (rest) tickRest(true);   // clocks are timestamp-based, so just re-sync the display — silently, no catch-up ding
   }
 
   function resumeDraft() {
@@ -970,12 +970,12 @@ LTA.ui = (function () {
 
   function restElapsed() { return Math.max(0, Math.round((Date.now() - rest.startedAt) / 1000)); }
 
-  function tickRest() {
+  function tickRest(silent) {
     if (!rest) return;
     const elapsed = restElapsed();
     if (rest.autoreg) {
       // Count up; the prescribed rest is a guide, you decide when you're ready.
-      if (!rest.beeped && elapsed >= rest.total) { rest.beeped = true; beep(); }
+      if (!rest.beeped && elapsed >= rest.total) { rest.beeped = true; if (!silent) beep(); }
       const el = $('restTime');
       if (el) el.textContent = U.fmtSec(elapsed);
       const bar = $('restFill');
@@ -984,7 +984,9 @@ LTA.ui = (function () {
     }
     const remaining = rest.total - elapsed;
     if (remaining <= 0) {
-      beep();
+      // silent: this is a reopen/foreground resync finding the timer already elapsed —
+      // don't ding for a moment that already passed while the app was closed.
+      if (!silent) beep();
       const target = rest.advanceToIdx;
       stopRest();
       landAt(target);
