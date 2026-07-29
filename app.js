@@ -161,7 +161,7 @@ LTA.ui = (function () {
         h += sessionSummaryHTML(day.dayType);
       }
       if (day.status === 'done') {
-        h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Additional session</button>';
+        h += '<button class="btn btn-primary" onclick="LTA.ui.openChangeToday()">Additional session</button>';
       } else if (day.status === 'skipped') {
         h += '<div class="done-note muted">Skipped this week' + (day.replacedBy ? '' : ' — racket play covered it.') + '</div>';
         h += '<button class="btn btn-ghost" onclick="LTA.ui.startSession()">Do it anyway</button>';
