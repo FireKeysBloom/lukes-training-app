@@ -159,7 +159,7 @@ LTA.ui = (function () {
       h += '<div class="session-kind">' + esc(tpl.name) + '</div>';
       h += sessionSummaryHTML(day.dayType);
       if (day.status === 'done') {
-        h += '<div class="done-note">✅ Done — nice work.</div>';
+        if (daySessions.length <= 1) h += '<div class="done-note">✅ Done — nice work.</div>';
         h += '<button class="btn btn-ghost" onclick="LTA.ui.startSession()">Log another session</button>';
       } else if (day.status === 'skipped') {
         h += '<div class="done-note muted">Skipped this week' + (day.replacedBy ? '' : ' — racket play covered it.') + '</div>';
