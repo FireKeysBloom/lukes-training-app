@@ -164,9 +164,9 @@ LTA.data = (function () {
   ex('hiit_spin', 'HIIT Spin', 'conditioning', 'spin bike', [30, 30], 0,
     ['10 min build-up, then 6–8 × 40 s hard / 80 s easy', 'Hard = can say words, not sentences', '5 min easy spin-down'], ['bike_intervals'],
     { unit: 'seconds', video: yt('hiit spin bike interval workout 30 minutes') });
-  ex('incline_walk', 'Incline Treadmill Walk', 'conditioning', 'treadmill', [30, 40], 0,
+  ex('incline_walk', 'Incline Treadmill Walk', 'conditioning', 'treadmill', [30, 30], 0,
     ['10–12% incline, no handrails', '60–80% max HR — conversational', 'Fat-burning + aerobic base'], ['z2_bike'],
-    { unit: 'seconds', painGate: 'knee' });
+    { unit: 'minutes', painGate: 'knee' });
   ex('z2_bike', 'Zone-2 Bike', 'conditioning', 'static bike', [30, 45], 0,
     ['Conversational pace — you can talk in sentences', 'Nose-breathing is a good check'], ['incline_walk'], { unit: 'seconds' });
   ex('bike_intervals', 'Bike Intervals', 'conditioning', 'static bike', [1, 1], 0,
@@ -290,7 +290,7 @@ LTA.data = (function () {
       id: 'z2', name: 'Conditioning · Engine', kind: 'conditioning', priority: 2,
       warmup: ['First 3–5 min easy — that’s the warmup'],
       blocks: [
-        { title: 'Pick one or both (~30 min each)', items: [p('hiit_spin', 1, 30, 30, 0, 'timed', 'Anaerobic: 6–8 × 40 s hard / 80 s easy'), p('incline_walk', 1, 30, 40, 0, 'timed', 'Aerobic/fat-burn: 60–80% max HR')] },
+        { title: 'Pick one or both (~30 min each)', items: [p('hiit_spin', 1, 30, 30, 0, 'timed', 'Anaerobic: 6–8 × 40 s hard / 80 s easy'), p('incline_walk', 1, 30, 30, 0, 'timed', 'Aerobic/fat-burn: 60–80% max HR')] },
         { title: 'Mobility', items: [p('mobility_flow', 1, 15, 15, 0, 'timed')] },
       ],
     },

@@ -336,7 +336,7 @@ LTA.ui = (function () {
     } else {
       h += '<div class="set-entry">';
       h += stepperHTML('weight', p.weight, ex.incrementKg || 2.5, unit(), fmtLoad(ex, p.weight));
-      h += stepperHTML('reps', p.reps, ex.unit === 'seconds' ? 5 : ex.unit === 'meters' ? 10 : 1, repUnit(ex).trim());
+      h += stepperHTML('reps', p.reps, ex.unit === 'seconds' ? 5 : ex.unit === 'meters' ? 10 : ex.unit === 'minutes' ? 5 : 1, repUnit(ex).trim());
       h += '</div>';
       h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.logSet()">Log set ' + (logged.length + 1) + '</button>';
     }
@@ -354,7 +354,7 @@ LTA.ui = (function () {
     view.innerHTML = h;
   }
 
-  function repUnit(ex) { return ex.unit === 'seconds' ? ' s' : ex.unit === 'meters' ? ' m' : ' reps'; }
+  function repUnit(ex) { return ex.unit === 'seconds' ? ' s' : ex.unit === 'meters' ? ' m' : ex.unit === 'minutes' ? ' min' : ' reps'; }
 
   function renderWarmup(view, tpl) {
     let h = '<div class="player">';
@@ -462,7 +462,7 @@ LTA.ui = (function () {
     const isCustom = editId && !!(S().customExercises || {})[editId];
     const note = editId ? (S().exerciseNotes[editId] || '') : '';
     const cats = ['strength', 'accessory', 'power', 'rehab', 'core', 'conditioning', 'mobility'];
-    const units = ['reps', 'seconds', 'meters'];
+    const units = ['reps', 'seconds', 'meters', 'minutes'];
     const gates = ['none', 'knee', 'shoulder'];
     let h = '<h3>' + (editId ? 'Edit ' + esc(ex.name) : 'New exercise') + '</h3>' +
       '<label>Name</label><input class="input" id="f-name" value="' + esc(ex ? ex.name : '') + '">' +
@@ -560,9 +560,10 @@ LTA.ui = (function () {
 
   function addExercise(exId) {
     const ex = D.EXERCISES[exId];
+    const isTimed = ex.category === 'conditioning' || ex.category === 'mobility';
     session.items.push({
       exerciseId: exId, block: 'Your picks',
-      sets: 3, repLo: ex.repRange[0], repHi: ex.repRange[1],
+      sets: isTimed ? 1 : 3, repLo: ex.repRange[0], repHi: ex.repRange[1],
       restSec: S().settings.defaultRestSec, progression: ex.incrementKg ? 'double' : 'rehab',
     });
     session.idx = session.items.length - 1;
@@ -642,7 +643,7 @@ LTA.ui = (function () {
   // ---------- Tempo ----------
   function tempoFor(it, ex) {
     if (ex.tempo !== undefined) return ex.tempo;   // explicit, including a user's own edit
-    if (ex.unit === 'seconds' || ex.unit === 'meters') return 'hold';
+    if (ex.unit === 'seconds' || ex.unit === 'meters' || ex.unit === 'minutes') return 'hold';
     return D.defaultTempo(ex.category, !!it.main || D.MAIN_LIFTS.indexOf(ex.id) >= 0);
   }
 
@@ -722,7 +723,7 @@ LTA.ui = (function () {
 
   function calibMode(it, ex) {
     if (ex.category === 'power') return 'power';
-    if (ex.unit === 'meters' || ex.unit === 'seconds') return 'endurance';
+    if (ex.unit === 'meters' || ex.unit === 'seconds' || ex.unit === 'minutes') return 'endurance';
     if (it.main && ex.category === 'strength') return 'heavy';
     return 'standard';
   }
@@ -1305,8 +1306,8 @@ LTA.ui = (function () {
     const hi = $('didHiit'), st = $('didSteady');
     if (hi && hi.checked) session.sets.push({ exerciseId: 'hiit_spin', weight: 0, reps: 30 });
     if (st && st.checked) session.sets.push({ exerciseId: 'incline_walk', weight: 0, reps: 30 });
-    session.feel = 4;
-    completeSession();
+    if (session.dayType === 'z2') openFinishModal();
+    else openRecoveryFinishModal();
   }
 
   // ---------- Pain modal ----------
@@ -1367,6 +1368,23 @@ LTA.ui = (function () {
   function confirmFinish() {
     session.feel = selectedFeel;
     session.sessionRPE = Number(($('slider-srpe') || {}).value || 7);
+    const notes = $('sessionNotes');
+    if (notes && notes.value) session.notes = notes.value;
+    closeModal();
+    completeSession();
+  }
+
+  function openRecoveryFinishModal() {
+    selectedFeel = 4;
+    let h = '<h3>Finish session</h3>' +
+      '<label>How did it feel?</label>' + feelButtonsHTML() +
+      '<label>Notes</label><textarea id="sessionNotes" rows="2" placeholder="optional"></textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmRecoveryFinish()">Save session</button>';
+    modal(h, true);
+  }
+
+  function confirmRecoveryFinish() {
+    session.feel = selectedFeel;
     const notes = $('sessionNotes');
     if (notes && notes.value) session.notes = notes.value;
     closeModal();
@@ -1930,7 +1948,7 @@ LTA.ui = (function () {
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
     finishRacket, finishSimple, segPick,
     openPainModal, savePainFlag,
-    openFinishModal, confirmFinish, pickFeel,
+    openFinishModal, confirmFinish, openRecoveryFinishModal, confirmRecoveryFinish, pickFeel,
     saveCheckIn,
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,
     submitReview, pickLift,
