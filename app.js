@@ -156,18 +156,20 @@ LTA.ui = (function () {
     } else {
       const tpl = D.DAYS[day.dayType];
       h += '<div class="card session-card">';
-      h += '<div class="session-kind">' + esc(tpl.name) + '</div>';
-      h += sessionSummaryHTML(day.dayType);
+      if (day.status !== 'done') {
+        h += '<div class="session-kind">' + esc(tpl.name) + '</div>';
+        h += sessionSummaryHTML(day.dayType);
+      }
       if (day.status === 'done') {
-        if (daySessions.length <= 1) h += '<div class="done-note">✅ Done — nice work.</div>';
-        h += '<button class="btn btn-ghost" onclick="LTA.ui.startSession()">Log another session</button>';
+        h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Additional session</button>';
       } else if (day.status === 'skipped') {
         h += '<div class="done-note muted">Skipped this week' + (day.replacedBy ? '' : ' — racket play covered it.') + '</div>';
         h += '<button class="btn btn-ghost" onclick="LTA.ui.startSession()">Do it anyway</button>';
+        h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Do something else today</button>';
       } else {
         h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.startSession()">Start session</button>';
+        h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Do something else today</button>';
       }
-      h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Do something else today</button>';
       h += '</div>';
       if (day.optional) h += '<p class="muted">This day is optional this week (two racket sessions already).</p>';
     }
