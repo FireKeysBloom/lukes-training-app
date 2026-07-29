@@ -142,6 +142,7 @@ LTA.ui = (function () {
     const s = S();
     const today = U.todayStr();
     const day = E.dayForDate(today);
+    const daySessions = E.sessionsForDate(today);
     const due = E.reviewDue();
     let h = '<div class="pagehead"><h2>Today</h2><div>' + topInfo() + '</div></div>';
     h += '<p class="muted">' + U.niceDate(today) + '</p>';
@@ -169,6 +170,11 @@ LTA.ui = (function () {
       h += '<button class="btn btn-ghost" onclick="LTA.ui.openChangeToday()">Do something else today</button>';
       h += '</div>';
       if (day.optional) h += '<p class="muted">This day is optional this week (two racket sessions already).</p>';
+    }
+
+    if (daySessions.length) {
+      h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged today</div>';
+      daySessions.forEach((sess) => { h += completedSessionCardHTML(sess); });
     }
 
     const w = s.currentWeek;
@@ -200,6 +206,20 @@ LTA.ui = (function () {
     });
     if (items.length > 5) rows.push('<div class="today-ex-row"><span class="tx-name">+ ' + (items.length - 5) + ' more</span></div>');
     return '<div class="today-ex">' + rows.join('') + '</div>';
+  }
+
+  function completedSessionCardHTML(sess) {
+    const tpl = D.DAYS[sess.dayType];
+    const bits = [];
+    if (sess.durationMin) bits.push(sess.durationMin + ' min');
+    if (sess.sets && sess.sets.length) bits.push(sess.sets.length + ' sets');
+    if (sess.feel) bits.push('felt ' + sess.feel + '/5');
+    let h = '<div class="card session-card done-card">';
+    h += '<div class="session-kind">' + esc(tpl ? tpl.name : sess.dayType) + '</div>';
+    if (bits.length) h += '<p class="muted">' + esc(bits.join(' · ')) + '</p>';
+    if (sess.notes) h += '<p>' + esc(sess.notes) + '</p>';
+    h += '</div>';
+    return h;
   }
 
   // ---------- Session player ----------
@@ -1455,10 +1475,13 @@ LTA.ui = (function () {
     w.days.forEach((d, i) => {
       const tpl = D.DAYS[d.dayType];
       const isToday = d.date === today;
-      const chip = d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
+      const daySessions = E.sessionsForDate(d.date);
+      const chip = daySessions.length > 1 ? '✅×' + daySessions.length :
+        d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
+      const name = daySessions.length > 1 ? daySessions.map((sess) => (D.DAYS[sess.dayType] || {}).name || sess.dayType).join(' + ') : tpl.name;
       h += '<div class="week-day' + (isToday ? ' today' : '') + '" onclick="LTA.ui.dayActions(' + i + ')">' +
         '<div class="wd-date">' + U.weekdayName(d.date) + '<span>' + d.date.slice(8) + '</span></div>' +
-        '<div class="wd-name">' + esc(tpl.name) + (d.optional ? ' <span class="badge">optional</span>' : '') + '</div>' +
+        '<div class="wd-name">' + esc(name) + (d.optional ? ' <span class="badge">optional</span>' : '') + '</div>' +
         '<div class="wd-chip">' + chip + '</div></div>';
     });
     h += '</div>';
@@ -1474,7 +1497,12 @@ LTA.ui = (function () {
     const w = S().currentWeek;
     const d = w.days[i];
     const tpl = D.DAYS[d.dayType];
+    const daySessions = E.sessionsForDate(d.date);
     let h = '<h3>' + U.niceDate(d.date) + '</h3><p>' + esc(tpl.name) + ' — ' + d.status + '</p>';
+    if (daySessions.length) {
+      h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged</div>';
+      daySessions.forEach((sess) => { h += completedSessionCardHTML(sess); });
+    }
     if (d.status === 'planned') {
       h += '<label>Change this day to:</label><select id="daySwapSel" class="input">' +
         Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(D.DAYS[k].name) + '</option>').join('') + '</select>' +

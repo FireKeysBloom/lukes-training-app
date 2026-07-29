@@ -73,6 +73,10 @@ LTA.engine = (function () {
     return w ? w.days.find((d) => d.date === dateStr) : null;
   }
 
+  function sessionsForDate(dateStr) {
+    return S().sessions.filter((sess) => sess.date === dateStr);
+  }
+
   function decide(msg) {
     const w = S().currentWeek;
     if (w) w.decisions.push(msg);
@@ -591,7 +595,7 @@ LTA.engine = (function () {
   }
 
   return {
-    ensureWeek, generateWeekPlan, dayForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
+    ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount,
   };
