@@ -95,6 +95,8 @@ main { flex: 1; padding: 8px 16px 96px; }
 .today-ex-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; }
 .today-ex-row .tx-name { color: var(--muted); }
 .today-ex-row .tx-rx { font-family: var(--cond); font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; text-transform: uppercase; }
+button.today-ex-toggle { width: 100%; background: none; border: none; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+button.today-ex-toggle .tx-name { text-decoration: underline; }
 
 /* Buttons */
 .btn {

@@ -269,6 +269,18 @@ LTA.engine = (function () {
       s.runState.pendingRegression = false;
     }
 
+    // Baseline-walk stage can also be satisfied outside the run slot — logged as its own
+    // exercise on a freestyle/engine day. Route it through the same next-morning knee
+    // check as a real run so it still advances the stage.
+    if (s.runState.stageId === 0 && !(session.dayType === 'run' && session.runMode === 'run')) {
+      const walked = (session.sets || []).some((x) => x.exerciseId === 'incline_walk');
+      if (walked) {
+        s.runState.lastRunDate = session.date;
+        const kneeDuring = maxFlag(session.painFlags, 'knee', 'during');
+        queueCheckIn(session.date, 'knee', 'run', kneeDuring);
+      }
+    }
+
     // Sprint work appended to a Z2 day.
     if (session.dayType === 'z2' && session.didSprints && s.runState.sprintUnlocked) {
       s.runState.sprintSessions++;

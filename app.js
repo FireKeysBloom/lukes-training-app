@@ -14,6 +14,7 @@ LTA.ui = (function () {
   let rest = null;             // rest timer state
   let runTimer = null;         // run interval timer state
   let audioCtx = null;
+  let todayExpanded = false;   // "+N more" exercise list on the Today card
 
   function S() { return LTA.store.getState(); }
   function $(id) { return document.getElementById(id); }
@@ -201,13 +202,24 @@ LTA.ui = (function () {
     if (!blocks) return '';
     const items = [];
     blocks.forEach((b) => b.items.forEach((it) => items.push(it)));
-    const rows = items.slice(0, 5).map((it) => {
+    const shown = todayExpanded ? items : items.slice(0, 5);
+    const rows = shown.map((it) => {
       const e = D.EXERCISES[it.exerciseId];
       return '<div class="today-ex-row"><span class="tx-name">' + esc(e.name) + '</span>' +
         '<span class="tx-rx">' + it.sets + ' × ' + it.repLo + (it.repHi > it.repLo ? '–' + it.repHi : '') + '</span></div>';
     });
-    if (items.length > 5) rows.push('<div class="today-ex-row"><span class="tx-name">+ ' + (items.length - 5) + ' more</span></div>');
+    if (items.length > 5) {
+      rows.push(todayExpanded
+        ? '<button class="today-ex-row today-ex-toggle" onclick="LTA.ui.toggleTodayMore(event)"><span class="tx-name">Show less</span></button>'
+        : '<button class="today-ex-row today-ex-toggle" onclick="LTA.ui.toggleTodayMore(event)"><span class="tx-name">+ ' + (items.length - 5) + ' more</span></button>');
+    }
     return '<div class="today-ex">' + rows.join('') + '</div>';
+  }
+
+  function toggleTodayMore(ev) {
+    if (ev) ev.stopPropagation();
+    todayExpanded = !todayExpanded;
+    render();
   }
 
   function completedSessionCardHTML(sess) {
@@ -767,9 +779,25 @@ LTA.ui = (function () {
     else openCalibEffort(it, ex);
   }
 
+  // The calibration question follows straight from Log set — an accidental tap needs a
+  // way out that also un-logs the set that triggered it, not just a dismiss.
+  function cancelCalibSet() {
+    const it = session.items[session.idx];
+    for (let i = session.sets.length - 1; i >= 0; i--) {
+      if (session.sets[i].exerciseId === it.exerciseId) { session.sets.splice(i, 1); break; }
+    }
+    saveDraft();
+    closeModal();
+    render();
+  }
+
+  function calibModalX() {
+    return '<button class="modal-x" onclick="LTA.ui.cancelCalibSet()">✕</button>';
+  }
+
   function openCalibPain(it, ex) {
     const area = ex.painGate === 'knee' ? 'knee' : 'shoulder';
-    const h = '<h3>' + area.charAt(0).toUpperCase() + area.slice(1) + ' first</h3>' +
+    const h = calibModalX() + '<h3>' + area.charAt(0).toUpperCase() + area.slice(1) + ' first</h3>' +
       '<p class="muted">On this exercise pain sets the weight, not effort. Any discomfort on that set?</p>' +
       painSliderHTML('calibPain', 0) +
       '<button class="btn btn-primary btn-big" onclick="LTA.ui.calibPainAnswer()">Next</button>';
@@ -804,29 +832,29 @@ LTA.ui = (function () {
 
   function openCalibEffort(it, ex) {
     const mode = calibMode(it, ex);
-    let h;
+    let h = calibModalX();
     if (mode === 'power') {
-      h = '<h3>Was the last rep as explosive as the first?</h3>' +
+      h += '<h3>Was the last rep as explosive as the first?</h3>' +
         '<p class="muted">Power is set by output, not effort — the right load is the heaviest one that stays fast.</p>' +
         cbtn('up', 'Yes — every rep crisp', false) +
         cbtn('hold', 'Slight drop-off', true) +
         cbtn('down', 'No — clearly slower', false);
     } else if (mode === 'endurance') {
-      h = '<h3>Could you have kept going?</h3>' +
+      h += '<h3>Could you have kept going?</h3>' +
         '<p class="muted">Grip giving out is the point. Posture breaking down means it’s too heavy.</p>' +
         cbtn('7+', 'Easily — lots left', false) +
         cbtn('4-6', 'A bit more in me', false) +
         cbtn('2-3', 'That was about right', true) +
         cbtn('0-1', 'Posture broke down early', false);
     } else if (ex.painGate) {
-      h = '<h3>How much was left in the tank?</h3>' +
+      h += '<h3>How much was left in the tank?</h3>' +
         '<p class="muted">For this one we stop further from failure — 3–4 in reserve is the target.</p>' +
         cbtn('7+', '7+ — way too light', false) +
         cbtn('4-6', '5–6 — still easy', false) +
         cbtn('3-4', '3–4 — right for this', true) +
         cbtn('0-1', '0–2 — too close to failure', false);
     } else {
-      h = '<h3>How much was left in the tank?</h3>' +
+      h += '<h3>How much was left in the tank?</h3>' +
         '<p class="muted">If you’d pushed to the limit, how many more reps could you have done?' +
         (mode === 'heavy' ? ' Aim to answer this on a set of 8–10.' : '') + '</p>' +
         cbtn('7+', '7+ — way too light', false) +
@@ -1969,7 +1997,8 @@ LTA.ui = (function () {
   return {
     init, render, setTab,
     startSession, abandonSession, logSet, logTimedItem, moveEx, step,
-    openSubModal, chooseSwap, applySwap, openChangeToday, changeToday, warmupDone, calibAnswer, calibPainAnswer,
+    openSubModal, chooseSwap, applySwap, openChangeToday, changeToday, warmupDone, calibAnswer, calibPainAnswer, cancelCalibSet,
+    toggleTodayMore,
     editStep, deleteSet, undoSwap, forceUpdate,
     openAddExercise, filterExercises, addExercise,
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
