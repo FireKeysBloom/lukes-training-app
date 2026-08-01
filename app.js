@@ -1199,11 +1199,35 @@ LTA.ui = (function () {
         h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.startRunTimer()">Start interval timer</button>';
         h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.finishRun(\'run\')">Finish — I ran it</button>';
       }
+      const walkNote = S().runWalkNote;
+      if (walkNote) h += '<div class="my-note">📝 ' + esc(walkNote) + '</div>';
+      h += '<button class="btn-link note-link" onclick="LTA.ui.openRunNoteModal(\'walk\')">' + (walkNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
     }
     h += '<div class="card-title" style="margin-top:24px">Then: core</div>';
     h += '<p class="muted">Dead bug 3×8 · Side plank 3×30–45 s · Pallof press 3×10 — logged as part of this session.</p>';
+    const coreNote = S().runCoreNote;
+    if (coreNote) h += '<div class="my-note">📝 ' + esc(coreNote) + '</div>';
+    h += '<button class="btn-link note-link" onclick="LTA.ui.openRunNoteModal(\'core\')">' + (coreNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
     h += '</div>';
     view.innerHTML = h;
+  }
+
+  function openRunNoteModal(section) {
+    const isCore = section === 'core';
+    const note = isCore ? S().runCoreNote : S().runWalkNote;
+    const h = '<h3>Note — ' + (isCore ? 'Core' : 'Run / walk') + '</h3>' +
+      '<textarea id="runNoteText" rows="4" placeholder="Tips, reminders, what worked…">' + esc(note) + '</textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveRunNote(\'' + section + '\')">Save note</button>';
+    modal(h, true);
+  }
+
+  function saveRunNote(section) {
+    const s = S();
+    const v = $('runNoteText').value.trim();
+    if (section === 'core') s.runCoreNote = v; else s.runWalkNote = v;
+    LTA.store.save();
+    closeModal();
+    render();
   }
 
   function startRunTimer() {
@@ -2037,7 +2061,7 @@ LTA.ui = (function () {
     openExerciseLibrary, openExerciseFormFor, openExerciseForm, saveExerciseForm, deleteCustomExercise,
     openNoteModal, saveNote, openWarmupNoteModal, saveWarmupNote,
     startRest, stopRest, adjustRest, restReady,
-    startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish,
+    startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish, openRunNoteModal, saveRunNote,
     finishRacket, finishSimple, segPick,
     openPainModal, savePainFlag,
     openFinishModal, confirmFinish, openRecoveryFinishModal, confirmRecoveryFinish, pickFeel,
