@@ -1533,6 +1533,7 @@ LTA.ui = (function () {
       h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged</div>';
       daySessions.forEach((sess) => { h += completedSessionCardHTML(sess); });
     }
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openQuickLogModal(' + i + ')">📝 Log a session on this day</button>';
     if (d.status === 'planned') {
       h += '<label>Change this day to:</label><select id="daySwapSel" class="input">' +
         Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(D.DAYS[k].name) + '</option>').join('') + '</select>' +
@@ -1554,6 +1555,38 @@ LTA.ui = (function () {
   }
   function markSkipped(i) { const w = S().currentWeek; w.days[i].status = 'skipped'; LTA.store.save(true); closeModal(); render(); }
   function unskip(i) { const w = S().currentWeek; w.days[i].status = 'planned'; LTA.store.save(true); closeModal(); render(); }
+
+  // Retroactive / no-fuss logging: record a session on a given day without
+  // walking through the live player. Details are all optional.
+  function openQuickLogModal(i) {
+    const w = S().currentWeek;
+    const d = w.days[i];
+    selectedFeel = 4;
+    let h = '<h3>Log a session — ' + U.niceDate(d.date) + '</h3>' +
+      '<label>What did you do?</label><select id="qlType" class="input">' +
+      Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(D.DAYS[k].name) + '</option>').join('') + '</select>' +
+      '<p class="muted">Everything below is optional — save now, or add details.</p>' +
+      '<label>Duration (minutes)</label><input type="number" id="qlDuration" class="input" placeholder="optional" min="0" step="5">' +
+      '<label>How did it feel?</label>' + feelButtonsHTML() +
+      '<label>Notes</label><textarea id="qlNotes" rows="2" placeholder="optional"></textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmQuickLog(' + i + ')">Save session</button>';
+    modal(h, true);
+  }
+
+  function confirmQuickLog(i) {
+    const w = S().currentWeek;
+    const d = w.days[i];
+    const dayType = $('qlType').value;
+    const durationVal = $('qlDuration').value;
+    const notes = $('qlNotes').value.trim();
+    const sess = { id: U.uid(), date: d.date, dayType, sets: [], painFlags: [], feel: selectedFeel };
+    if (durationVal) sess.durationMin = Number(durationVal);
+    if (notes) sess.notes = notes;
+    closeModal();
+    E.applySessionEnd(sess);
+    render();
+    toast('Session logged for ' + U.niceDate(d.date) + '.');
+  }
 
   function openRacketModal() {
     const w = S().currentWeek;
@@ -2010,6 +2043,7 @@ LTA.ui = (function () {
     openFinishModal, confirmFinish, openRecoveryFinishModal, confirmRecoveryFinish, pickFeel,
     saveCheckIn,
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,
+    openQuickLogModal, confirmQuickLog,
     submitReview, pickLift,
     saveSupabase, doSignIn, doSignUp, doSignOut, syncNow, importFile, saveTraining, resetAll,
     closeModal,

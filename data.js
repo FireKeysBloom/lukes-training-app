@@ -295,7 +295,7 @@ LTA.data = (function () {
       ],
     },
     rest: {
-      id: 'rest', name: 'Recovery · GMB Flow', kind: 'rest', priority: 1,
+      id: 'rest', name: 'Recovery', kind: 'rest', priority: 1,
       warmup: [],
       blocks: [
         { title: 'Body control (GMB-style)', items: [p('gmb_flow', 1, 15, 15, 0, 'timed', 'Skill practice, not a workout')] },
