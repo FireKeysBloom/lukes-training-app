@@ -1189,15 +1189,18 @@ LTA.ui = (function () {
       h += '<div class="ex-target">' + esc(spec.protocol) + '</div>';
       h += '<p class="muted">Completions: ' + spec.completions + '/' + spec.required + ' · pain ≤2/10 counts</p>';
       h += '<ul class="cues">' + spec.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+      const isWalkOnly = !spec.stage.totalRunMin;
+      const finishLabel = 'Finish — I ' + (isWalkOnly ? 'walked it' : 'ran it');
       if (runTimer) {
         h += '<div class="run-timer"><div class="run-phase" id="runPhase">' + esc(runTimer.phases[runTimer.idx].label) + '</div>' +
           '<div class="run-clock" id="runClock">' + U.fmtSec(runTimer.remaining) + '</div>' +
           '<div class="muted" id="runNext">' + runNextLabel() + '</div>' +
           '<button class="btn btn-ghost" onclick="LTA.ui.toggleRunTimer()">' + (runTimer.running ? 'Pause' : 'Resume') + '</button>' +
           '<button class="btn-link" onclick="LTA.ui.stopRunTimer()">Stop timer</button></div>';
+        h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.finishRun(\'run\')">' + finishLabel + '</button>';
       } else {
         h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.startRunTimer()">Start interval timer</button>';
-        h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.finishRun(\'run\')">Finish — I ran it</button>';
+        h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.finishRun(\'run\')">' + finishLabel + '</button>';
       }
       const walkNote = S().runWalkNote;
       if (walkNote) h += '<div class="my-note">📝 ' + esc(walkNote) + '</div>';
