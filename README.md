@@ -1,6 +1,6 @@
 # Luke's Training App
 
-A single-user, mobile-first training PWA for building all-round athleticism: strength, conditioning and joint resilience, aimed at performing well in racket sports and running.
+A single-user, mobile-first training PWA for building all-round athleticism: strength, conditioning and joint resilience, aimed at performing well in racket sports and running — with surf-specific prep (paddling endurance, pop-up power, rotational core strength) woven into the same sessions.
 
 Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage` with optional Supabase cloud sync (credentials pasted at runtime in Settings — never in this repo).
 

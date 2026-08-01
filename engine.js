@@ -296,7 +296,7 @@ LTA.engine = (function () {
     if (session.dayType === 'racket') {
       const shoulderRacket = maxFlag(session.painFlags, 'shoulder', 'during');
       if (shoulderRacket >= 3) {
-        dropRung('Shoulder pain ' + shoulderRacket + '/10 while playing — ease off serve volume this week');
+        dropRung('Shoulder pain ' + shoulderRacket + '/10 while playing — ease off overhead volume this week');
       } else {
         queueCheckIn(session.date, 'shoulder', 'racket', shoulderRacket);
       }
@@ -374,7 +374,7 @@ LTA.engine = (function () {
           dropRung('Shoulder ' + worst + '/10 the morning after pressing');
         }
       } else if (ci.context === 'racket' && severity >= 3) {
-        dropRung('Shoulder ' + severity + '/10 the morning after playing — reduce serve volume');
+        dropRung('Shoulder ' + severity + '/10 the morning after playing — reduce overhead volume');
       }
     }
     LTA.store.save(true);

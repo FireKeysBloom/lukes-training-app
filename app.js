@@ -1303,10 +1303,12 @@ LTA.ui = (function () {
   function renderRacketPlayer(view) {
     let h = '<div class="player"><div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
       '<div class="player-progress">Racket session</div><span></span></div>';
-    h += '<h2 class="ex-name">Tennis / Padel</h2>';
+    h += '<h2 class="ex-name">Racket Sport</h2>';
+    h += '<label>Sport</label><div class="seg" id="seg-sport">' + segHTML(['Tennis', 'Padel', 'Other'], 0) + '</div>';
+    h += '<input type="text" id="sportOther" class="input" placeholder="If “Other” — name it (e.g. Squash, Badminton, Pickleball)">';
     h += '<label>Duration (minutes)</label>' + stepperHTML('duration', 60, 15, 'min');
     h += '<label>Intensity</label><div class="seg" id="seg-intensity">' + segHTML(['Casual', 'Moderate', 'Competitive'], 1) + '</div>';
-    h += '<label>Shoulder during serves (0–10)</label>' + painSliderHTML('racketShoulder', 0);
+    h += '<label>Shoulder during play (0–10)</label>' + painSliderHTML('racketShoulder', 0);
     h += '<label>Knee (0–10)</label>' + painSliderHTML('racketKnee', 0);
     h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.finishRacket()">Save play session</button></div>';
     view.innerHTML = h;
@@ -1332,10 +1334,13 @@ LTA.ui = (function () {
     const sh = Number(($('slider-racketShoulder') || {}).value || 0);
     const kn = Number(($('slider-racketKnee') || {}).value || 0);
     const seg = document.querySelector('#seg-intensity .seg-btn.active');
+    const sportSeg = document.querySelector('#seg-sport .seg-btn.active');
+    const sportOtherVal = ($('sportOther') || {}).value ? $('sportOther').value.trim() : '';
+    const sport = (sportSeg && sportSeg.textContent === 'Other' && sportOtherVal) ? sportOtherVal : (sportSeg ? sportSeg.textContent : 'Tennis');
     if (sh > 0) session.painFlags.push({ area: 'shoulder', severity: sh, when: 'during', date: session.date, context: 'racket' });
     if (kn > 0) session.painFlags.push({ area: 'knee', severity: kn, when: 'during', date: session.date, context: 'racket' });
     session.durationMin = dur;
-    session.notes = 'Intensity: ' + (seg ? seg.textContent : 'Moderate');
+    session.notes = sport + ' · Intensity: ' + (seg ? seg.textContent : 'Moderate');
     session.feel = 4;
     completeSession();
   }

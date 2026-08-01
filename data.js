@@ -22,10 +22,10 @@ LTA.data = (function () {
 
   // ---- Power (explosive intent, low reps, full recovery, never to failure) ----
   ex('box_jump', 'Box Jump', 'power', 'plyo box', [3, 3], 0,
-    ['Step down, never jump down (knee-safe)', 'Land soft and quiet', 'Full intent every rep — stop when height drops'], ['broad_jump'],
+    ['Step down, never jump down (knee-safe)', 'Land soft and quiet', 'Full intent every rep — stop when height drops'], ['broad_jump', 'surf_popup'],
     { video: yt('box jump technique landing mechanics') });
   ex('broad_jump', 'Broad Jump', 'power', 'floor', [3, 3], 0,
-    ['Arms swing hard', 'Stick the landing, hips back', 'Walk back, full rest between reps'], ['box_jump'],
+    ['Arms swing hard', 'Stick the landing, hips back', 'Walk back, full rest between reps'], ['box_jump', 'surf_popup'],
     { video: yt('standing broad jump technique') });
   ex('mb_chest_throw', 'Med-Ball Chest Throw', 'power', 'medicine ball + wall', [5, 5], 1,
     ['Throw as hard as possible', 'Catch, reset, repeat — no rush', 'Power first, before fatigue'], [],
@@ -68,7 +68,7 @@ LTA.data = (function () {
   ex('incline_db_press', 'Incline DB Press', 'strength', 'dumbbells + bench', [8, 12], 2,
     ['30–45° bench', 'Elbows ~45° from torso'], ['machine_chest_press'], { video: yt('incline dumbbell press form') });
   ex('cs_row', 'Chest-Supported Row', 'strength', 'machine or bench', [8, 12], 2.5,
-    ['Pull elbows to hips', 'No torso heave'], ['cable_row_1arm', 'lat_pulldown'], { video: yt('chest supported row form') });
+    ['Pull elbows to hips', 'No torso heave'], ['cable_row_1arm', 'lat_pulldown', 'straight_arm_pulldown'], { video: yt('chest supported row form') });
   ex('cable_row_1arm', 'One-Arm Cable Row', 'accessory', 'cable', [10, 12], 2.5,
     ['Long stretch forward', 'Elbow to hip'], ['cs_row']);
   ex('face_pull', 'Face Pull', 'accessory', 'cable + rope', [12, 15], 1.25,
@@ -78,7 +78,7 @@ LTA.data = (function () {
   ex('triceps_pressdown', 'Triceps Pressdown', 'accessory', 'cable', [10, 15], 2.5, ['Elbows pinned'], [],
     { video: yt('triceps pressdown form') });
   ex('lat_pulldown', 'Lat Pulldown', 'strength', 'cable', [6, 10], 2.5,
-    ['Drive elbows down', 'Chest to the bar'], ['pull_up', 'cs_row'], { video: yt('lat pulldown form jeff nippard') });
+    ['Drive elbows down', 'Chest to the bar'], ['pull_up', 'cs_row', 'straight_arm_pulldown'], { video: yt('lat pulldown form jeff nippard') });
   ex('pull_up', 'Pull-Up', 'strength', 'bar (+ belt)', [6, 10], 2.5,
     ['Full hang start', 'Chin over bar'], ['lat_pulldown'], { video: yt('pull up form') });
   ex('lateral_raise', 'DB Lateral Raise', 'accessory', 'dumbbells', [12, 15], 1,
@@ -157,7 +157,7 @@ LTA.data = (function () {
   ex('dead_bug', 'Dead Bug', 'core', 'floor', [8, 8], 0, ['Low back glued down', 'Exhale as limbs extend'], [],
     { video: yt('dead bug exercise form') });
   ex('side_plank', 'Side Plank', 'core', 'floor', [30, 45], 0, ['Straight line head to feet', 'Hips high'], [], { unit: 'seconds' });
-  ex('pallof_press', 'Pallof Press', 'core', 'cable/band', [10, 10], 1.25, ['Resist the twist', 'Slow press out'], [],
+  ex('pallof_press', 'Pallof Press', 'core', 'cable/band', [10, 10], 1.25, ['Resist the twist', 'Slow press out'], ['rotational_mb_throw'],
     { video: yt('pallof press form') });
 
   // ---- Conditioning & mobility ----
@@ -177,6 +177,19 @@ LTA.data = (function () {
   ex('mobility_flow', 'Mobility Flow', 'mobility', 'mat + roller', [15, 15], 0,
     ['Couch stretch 2×45s/side', '90/90 hip switches ×10', 'Thoracic rotations ×8/side', 'Cross-body shoulder 2×30s'], [], { unit: 'seconds' });
 
+  // ---- Surf prep (paddling endurance, pop-up power, rotational core power) ----
+  // Prep only — swap-in options on existing days via the Swap button, not a dedicated
+  // day/session type. See PROGRAM-RATIONALE.md for why full surf logging is deferred.
+  ex('straight_arm_pulldown', 'Straight-Arm Pulldown', 'accessory', 'cable', [15, 20], 1.25,
+    ['Long lever, elbow stays almost straight — this is the paddle pull, not a row', 'Drive from the lat, ribs down, no shrug', 'Higher reps on purpose: paddling is endurance, not max strength'],
+    ['lat_pulldown', 'cs_row'], { video: yt('straight arm pulldown lat paddle endurance form') });
+  ex('surf_popup', 'Surf Pop-Up', 'power', 'bodyweight', [5, 5], 0,
+    ['From prone, push the floor away hard and snap both feet under the hips at once', 'Land low in a ready stance — front knee bent, back straight', 'Full recovery between reps — speed and crispness, not conditioning'],
+    ['box_jump', 'broad_jump'], { video: yt('surf pop up technique drill') });
+  ex('rotational_mb_throw', 'Rotational Med-Ball Throw', 'power', 'medicine ball + wall', [5, 5], 1,
+    ['Rotate from the hips first, arms follow — same whip as popping up into a turn', 'Full recovery between reps, max intent every throw', 'Both sides — reps are per side'],
+    ['pallof_press'], { video: yt('rotational medicine ball throw core power') });
+
   // ---- Load semantics ----
   // barKg      = weight of the empty implement; it's the floor for that lift (never shows "BW").
   // bodyweight = your own bodyweight is the base load, so 0 displays as "BW" and any added
@@ -187,7 +200,7 @@ LTA.data = (function () {
     hip_thrust: { barKg: 20 }, glute_bridge: { barKg: 20 }, barbell_ohp: { barKg: 20 },
     trap_bar_dl: { barKg: 25 },
     landmine_press: { barKg: 10 }, // ~half the bar carries to the pressing end
-    box_jump: { bodyweight: true }, broad_jump: { bodyweight: true },
+    box_jump: { bodyweight: true }, broad_jump: { bodyweight: true }, surf_popup: { bodyweight: true },
     pull_up: { bodyweight: true }, scap_pull_up: { bodyweight: true },
     pushup_plus: { bodyweight: true }, dead_hang: { bodyweight: true },
     side_plank: { bodyweight: true }, dead_bug: { bodyweight: true },
@@ -220,7 +233,7 @@ LTA.data = (function () {
     sl_calf_raise: 'each', side_hip_abduction: 'each', side_plank: 'each',
     hip_airplane: 'each', cable_row_1arm: 'each', landmine_press: 'each',
     med_ball_chop: 'each', cable_er_9090: 'each', side_lying_er: 'each',
-    dead_bug: 'alternate', pallof_press: 'each',
+    dead_bug: 'alternate', pallof_press: 'each', rotational_mb_throw: 'each',
   };
   Object.keys(SIDES_META).forEach((id) => { if (EX[id]) EX[id].sides = SIDES_META[id]; });
 
@@ -304,7 +317,7 @@ LTA.data = (function () {
     },
     racket: {
       id: 'racket', name: 'Racket Sport', kind: 'racket', priority: 7,
-      warmup: ['5 min easy movement + shadow swings', 'Band ER ×12 before serving', 'Start serves at 50% pace'],
+      warmup: ['5 min easy movement + shadow swings', 'Band ER ×12 before playing', 'Ease in at half pace before full effort'],
       blocks: [{ title: 'Play', items: [] }],
     },
     custom: {
