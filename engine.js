@@ -311,6 +311,23 @@ LTA.engine = (function () {
     return m;
   }
 
+  // Pain that shows up after a racket session has already been logged — rest of the day,
+  // or the next day. `entries` is [{area, severity, durations}]; zero-severity entries are dropped.
+  function addRacketFollowUp(sessionId, entries) {
+    const s = S();
+    const sess = s.sessions.find((x) => x.id === sessionId);
+    const date = sess ? sess.date : U.todayStr();
+    (entries || []).forEach((e) => {
+      if (!e.severity) return;
+      const flag = { area: e.area, label: e.label, severity: e.severity, when: 'later', date, context: 'racket', durations: e.durations || [] };
+      s.painLog.push(flag);
+      if (sess) { sess.painFlags = sess.painFlags || []; sess.painFlags.push(flag); }
+      if (e.area === 'shoulder' && e.severity >= 3) dropRung('Shoulder pain ' + e.severity + '/10 after playing');
+      if (e.area === 'knee' && e.severity >= 3) s.currentWeek.kneeCaution = true;
+    });
+    LTA.store.save(true);
+  }
+
   // ---------- Morning check-ins ----------
 
   function queueCheckIn(date, area, context, painDuring) {
@@ -608,7 +625,7 @@ LTA.engine = (function () {
 
   return {
     ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
-    progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession,
+    progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount,
   };
 })();

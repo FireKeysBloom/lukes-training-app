@@ -228,12 +228,43 @@ LTA.ui = (function () {
     if (sess.durationMin) bits.push(sess.durationMin + ' min');
     if (sess.sets && sess.sets.length) bits.push(sess.sets.length + ' sets');
     if (sess.feel) bits.push('felt ' + sess.feel + '/5');
+    if (sess.dayType === 'racket' && sess.servingIntensity !== undefined) bits.push('serving ' + sess.servingIntensity + '%');
+    if (sess.dayType === 'racket' && sess.movementIntensity !== undefined) bits.push('movement ' + sess.movementIntensity + '%');
     let h = '<div class="card session-card done-card">';
     h += '<div class="session-kind">' + esc(tpl ? tpl.name : sess.dayType) + '</div>';
     if (bits.length) h += '<p class="muted">' + esc(bits.join(' · ')) + '</p>';
     if (sess.notes) h += '<p>' + esc(sess.notes) + '</p>';
+    if (sess.dayType === 'racket') h += '<button class="btn-mini pain" onclick="LTA.ui.openRacketFollowUp(\'' + sess.id + '\')">Pain later?</button>';
     h += '</div>';
     return h;
+  }
+
+  // Retroactive: pain that showed up after a racket session was already logged.
+  function openRacketFollowUp(sessionId) {
+    const sess = S().sessions.find((x) => x.id === sessionId);
+    const areas = racketAreasForSession(sess);
+    let h = '<h3>Pain update</h3><p class="muted">Anything show up since the session ended?</p>';
+    areas.forEach((a) => {
+      h += '<label>' + esc(a.label) + ' pain (0–10)</label>' + painSliderHTML('follow-' + a.key, 0) +
+        durationChecklistHTML('follow-' + a.key + '-when', ['restOfDay', 'nextDay']);
+    });
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveRacketFollowUp(\'' + sessionId + '\')">Save</button>';
+    modal(h, true);
+  }
+
+  function saveRacketFollowUp(sessionId) {
+    const sess = S().sessions.find((x) => x.id === sessionId);
+    const areas = racketAreasForSession(sess);
+    const entries = areas.map((a) => ({
+      area: a.key,
+      label: a.label,
+      severity: Number(($('slider-follow-' + a.key) || {}).value || 0),
+      durations: readDurationChecklist('follow-' + a.key + '-when'),
+    }));
+    closeModal();
+    E.addRacketFollowUp(sessionId, entries);
+    render();
+    if (entries.some((e) => e.severity > 0)) toast('Pain update saved.');
   }
 
   // ---------- Session player ----------
@@ -1300,7 +1331,71 @@ LTA.ui = (function () {
 
   // ---------- Racket / simple players ----------
 
+  // Duration options for when pain showed up. The last two can't be known while the
+  // session is still being logged, so they're only offered through the retroactive
+  // follow-up flow (openRacketFollowUp) rather than at initial log time.
+  const DURATION_OPTIONS = [
+    ['warmup', 'Warmup'], ['beginning', 'Beginning'], ['middle', 'Middle'], ['end', 'End'],
+    ['restOfDay', 'Rest of day'], ['nextDay', 'Next day'],
+  ];
+  const DUR_LABELS = DURATION_OPTIONS.reduce((m, o) => { m[o[0]] = o[1]; return m; }, {});
+  const DURING_KEYS = ['warmup', 'beginning', 'middle', 'end'];
+
+  function durationChecklistHTML(prefix, allowedKeys, selected) {
+    const sel = selected || [];
+    const opts = DURATION_OPTIONS.filter((o) => allowedKeys.includes(o[0]));
+    return '<div class="duration-check">' + opts.map((o) =>
+      '<label class="check"><input type="checkbox" id="dur-' + prefix + '-' + o[0] + '"' + (sel.includes(o[0]) ? ' checked' : '') + '> ' + esc(o[1]) + '</label>').join('') + '</div>';
+  }
+
+  function readDurationChecklist(prefix) {
+    return DURATION_OPTIONS.filter((o) => { const el = $('dur-' + prefix + '-' + o[0]); return el && el.checked; }).map((o) => o[0]);
+  }
+
+  function intensitySliderHTML(id, val) {
+    return '<div class="pain-slider"><input type="range" min="0" max="100" step="10" value="' + val + '" id="slider-' + id + '" ' +
+      'oninput="document.getElementById(\'sliderv-' + id + '\').textContent=this.value+\'%\'">' +
+      '<div class="pain-val" id="sliderv-' + id + '">' + val + '%</div></div>';
+  }
+
+  function slugify(label) {
+    const key = String(label).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return key || ('area' + Date.now());
+  }
+
+  // The set of areas relevant to a given saved racket session: shoulder + knee (always),
+  // plus every area currently templated, plus anything actually logged on that session —
+  // covering areas that have since been removed from the template.
+  function racketAreasForSession(sess) {
+    const areas = [{ key: 'shoulder', label: 'Shoulder' }, { key: 'knee', label: 'Knee' }];
+    const seen = { shoulder: 1, knee: 1 };
+    (S().racketExtraAreas || []).forEach((a) => { if (!seen[a.key]) { areas.push(a); seen[a.key] = 1; } });
+    ((sess && sess.painFlags) || []).forEach((f) => { if (!seen[f.area]) { areas.push({ key: f.area, label: f.label || f.area }); seen[f.area] = 1; } });
+    return areas;
+  }
+
+  // A templated extra area's card — live slider + duration checklist, same shape as the
+  // shoulder/knee cards. Rendered both on initial player load and when an area gets
+  // promoted to the template mid-session (inserted directly, see confirmAddPainArea).
+  function templateAreaCardHTML(a, sev, durations) {
+    return '<div class="card" id="tplArea-' + a.key + '"><div class="card-title-row"><div class="card-title">' + esc(a.label) + '</div>' +
+      '<button class="btn-link" onclick="LTA.ui.removeExtraAreaFromTemplate(\'' + a.key + '\')">Remove from template</button></div>' +
+      '<label>' + esc(a.label) + ' pain during play, if any (0–10)</label>' + painSliderHTML('extra-' + a.key, sev || 0) +
+      '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('extraWhen-' + a.key, DURING_KEYS, durations) +
+      '</div>';
+  }
+
+  // A one-off area added this session but not promoted to the template — a fixed summary
+  // of what was captured in the add-area modal (not live-editable, unlike the card above).
+  function adhocAreaCardHTML(e) {
+    const durLine = e.durations.length ? e.durations.map((d) => DUR_LABELS[d]).join(', ') : 'no timing noted';
+    return '<div class="card" id="adhocArea-' + e.key + '"><div class="card-title-row"><div class="card-title">' + esc(e.label) + '</div>' +
+      '<button class="btn-link" onclick="LTA.ui.removeSessionExtraArea(\'' + e.key + '\')">Remove</button></div>' +
+      '<p class="muted">Pain ' + e.severity + '/10 · ' + esc(durLine) + '</p></div>';
+  }
+
   function renderRacketPlayer(view) {
+    const s = S();
     let h = '<div class="player"><div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
       '<div class="player-progress">Racket session</div><span></span></div>';
     h += '<h2 class="ex-name">Racket Sport</h2>';
@@ -1308,17 +1403,85 @@ LTA.ui = (function () {
     h += '<input type="text" id="sportOther" class="input" placeholder="If “Other” — name it (e.g. Squash, Badminton, Pickleball)">';
     h += '<label>Duration (minutes)</label>' + stepperHTML('duration', 60, 15, 'min');
     h += '<label>Intensity</label><div class="seg" id="seg-intensity">' + segHTML(['Casual', 'Moderate', 'Competitive'], 1) + '</div>';
-    h += '<label>Shoulder during play (0–10)</label>' + painSliderHTML('racketShoulder', 0);
-    h += '<label>Knee (0–10)</label>' + painSliderHTML('racketKnee', 0);
+
+    h += '<div class="card"><div class="card-title">Shoulder</div>' +
+      '<label>Serving intensity — how hard you served (0 = didn’t serve)</label>' + intensitySliderHTML('servingIntensity', 70) +
+      '<label>Shoulder pain during play, if any (0–10)</label>' + painSliderHTML('racketShoulder', 0) +
+      '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('racketShoulderWhen', DURING_KEYS) +
+      '</div>';
+
+    h += '<div class="card"><div class="card-title">Knee</div>' +
+      '<label>Running / movement intensity — how hard you moved (0 = didn’t run)</label>' + intensitySliderHTML('movementIntensity', 70) +
+      '<label>Knee pain during play, if any (0–10)</label>' + painSliderHTML('racketKnee', 0) +
+      '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('racketKneeWhen', DURING_KEYS) +
+      '</div>';
+
+    (s.racketExtraAreas || []).forEach((a) => { h += templateAreaCardHTML(a); });
+    (session.extraPainAreas || []).forEach((e) => { h += adhocAreaCardHTML(e); });
+
+    h += '<button class="btn-mini" id="addAreaBtn" onclick="LTA.ui.openAddPainArea()">+ Add another pain area</button>';
     h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.finishRacket()">Save play session</button></div>';
     view.innerHTML = h;
-    session.pending.__racket = { duration: 60 };
-    // reuse stepper plumbing
+    // reuse stepper plumbing (duration is still a +/- stepper; intensities are sliders now)
     session.items = [{ exerciseId: '__racket' }];
     session.idx = 0;
-    session.pending.__racket = session.pending.__racket || {};
-    session.pending.__racket.weight = 0;
-    session.pending.__racket.duration = 60;
+    session.pending.__racket = { duration: 60 };
+    session.extraPainAreas = session.extraPainAreas || [];
+  }
+
+  function openAddPainArea() {
+    let h = '<h3>Add a pain area</h3><label>Where?</label>' +
+      '<input type="text" id="newAreaName" class="input" placeholder="e.g. Elbow, Wrist, Lower back">' +
+      '<label>Pain during play (0–10)</label>' + painSliderHTML('newAreaSev', 0) +
+      '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('newAreaWhen', DURING_KEYS) +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmAddPainArea()">Add</button>';
+    modal(h, true);
+  }
+
+  // Inserts the new area's card directly next to the "+ Add another pain area" button
+  // rather than calling render() — a full re-render would wipe whatever's already been
+  // typed/dragged into the duration stepper, sport/intensity segments, and other sliders
+  // elsewhere on this screen.
+  function confirmAddPainArea() {
+    const nameEl = $('newAreaName');
+    const label = nameEl ? nameEl.value.trim() : '';
+    if (!label) { if (nameEl) nameEl.focus(); return; }
+    const key = slugify(label);
+    if (key === 'shoulder' || key === 'knee') { toast('Shoulder and knee are already tracked above.'); return; }
+    const s = S();
+    s.racketExtraAreas = s.racketExtraAreas || [];
+    session.extraPainAreas = session.extraPainAreas || [];
+    const inTemplate = s.racketExtraAreas.some((a) => a.key === key);
+    const inSession = session.extraPainAreas.some((a) => a.key === key);
+    if (inTemplate || inSession) { toast(label + ' is already tracked below.'); closeModal(); return; }
+    const sev = Number(($('slider-newAreaSev') || {}).value || 0);
+    const durations = readDurationChecklist('newAreaWhen');
+    closeModal();
+    const btn = $('addAreaBtn');
+    if (confirm('Add "' + label + '" to your racket sport log, so it shows up automatically on future sessions?')) {
+      const area = { key, label };
+      s.racketExtraAreas.push(area);
+      LTA.store.save(true);
+      if (btn) btn.insertAdjacentHTML('beforebegin', templateAreaCardHTML(area, sev, durations));
+    } else {
+      const entry = { key, label, severity: sev, durations };
+      session.extraPainAreas.push(entry);
+      if (btn) btn.insertAdjacentHTML('beforebegin', adhocAreaCardHTML(entry));
+    }
+  }
+
+  function removeExtraAreaFromTemplate(key) {
+    const s = S();
+    s.racketExtraAreas = (s.racketExtraAreas || []).filter((a) => a.key !== key);
+    LTA.store.save(true);
+    const el = $('tplArea-' + key);
+    if (el) el.remove(); else render();
+  }
+
+  function removeSessionExtraArea(key) {
+    session.extraPainAreas = (session.extraPainAreas || []).filter((a) => a.key !== key);
+    const el = $('adhocArea-' + key);
+    if (el) el.remove(); else render();
   }
 
   function segHTML(labels, activeIdx) {
@@ -1330,16 +1493,35 @@ LTA.ui = (function () {
   }
 
   function finishRacket() {
+    const s = S();
     const dur = Number(($('step-duration') || {}).textContent || 60);
+    const servingIntensity = Number(($('slider-servingIntensity') || {}).value || 0);
+    const movementIntensity = Number(($('slider-movementIntensity') || {}).value || 0);
     const sh = Number(($('slider-racketShoulder') || {}).value || 0);
     const kn = Number(($('slider-racketKnee') || {}).value || 0);
+    const shDur = readDurationChecklist('racketShoulderWhen');
+    const knDur = readDurationChecklist('racketKneeWhen');
     const seg = document.querySelector('#seg-intensity .seg-btn.active');
     const sportSeg = document.querySelector('#seg-sport .seg-btn.active');
     const sportOtherVal = ($('sportOther') || {}).value ? $('sportOther').value.trim() : '';
     const sport = (sportSeg && sportSeg.textContent === 'Other' && sportOtherVal) ? sportOtherVal : (sportSeg ? sportSeg.textContent : 'Tennis');
-    if (sh > 0) session.painFlags.push({ area: 'shoulder', severity: sh, when: 'during', date: session.date, context: 'racket' });
-    if (kn > 0) session.painFlags.push({ area: 'knee', severity: kn, when: 'during', date: session.date, context: 'racket' });
+    if (sh > 0) session.painFlags.push({ area: 'shoulder', label: 'Shoulder', severity: sh, when: 'during', date: session.date, context: 'racket', intensity: servingIntensity, durations: shDur });
+    if (kn > 0) session.painFlags.push({ area: 'knee', label: 'Knee', severity: kn, when: 'during', date: session.date, context: 'racket', intensity: movementIntensity, durations: knDur });
+
+    (s.racketExtraAreas || []).forEach((a) => {
+      const sev = Number(($('slider-extra-' + a.key) || {}).value || 0);
+      if (sev <= 0) return;
+      const durations = readDurationChecklist('extraWhen-' + a.key);
+      session.painFlags.push({ area: a.key, label: a.label, severity: sev, when: 'during', date: session.date, context: 'racket', durations });
+    });
+    (session.extraPainAreas || []).forEach((e) => {
+      if (e.severity <= 0) return;
+      session.painFlags.push({ area: e.key, label: e.label, severity: e.severity, when: 'during', date: session.date, context: 'racket', durations: e.durations });
+    });
+
     session.durationMin = dur;
+    session.servingIntensity = servingIntensity;
+    session.movementIntensity = movementIntensity;
     session.notes = sport + ' · Intensity: ' + (seg ? seg.textContent : 'Moderate');
     session.feel = 4;
     completeSession();
@@ -1742,12 +1924,60 @@ LTA.ui = (function () {
     // Pain trends
     h += '<div class="card"><div class="card-title">Pain trend (weekly max)</div><canvas id="painChart" width="640" height="200"></canvas>' +
       '<p class="muted"><span class="dotk"></span> knee &nbsp; <span class="dots"></span> shoulder</p></div>';
+    h += racketPainInsightsHTML();
 
     // Adherence
     h += '<div class="card"><div class="card-title">Adherence</div><canvas id="adhChart" width="640" height="160"></canvas></div>';
 
     view.innerHTML = h;
     requestAnimationFrame(drawCharts);
+  }
+
+  // Correlates racket-session effort (serving / movement intensity) with pain, and shows
+  // when in the session pain tends to show up — the data captured by the racket player's
+  // intensity sliders and duration checklists. Covers every area ever logged for a racket
+  // session, not just shoulder/knee, using each flag's label (older flags saved before
+  // labels existed fall back to a capitalized area key).
+  const CORR_FIELD_BY_AREA = { shoulder: 'servingIntensity', knee: 'movementIntensity' };
+
+  function racketPainInsightsHTML() {
+    const s = S();
+    const flags = s.painLog.filter((f) => f.context === 'racket');
+    if (!flags.length) return '';
+
+    const byArea = {};
+    flags.forEach((f) => {
+      if (!byArea[f.area]) byArea[f.area] = { label: f.label || (f.area.charAt(0).toUpperCase() + f.area.slice(1)), counts: {} };
+      (f.durations || []).forEach((d) => { byArea[f.area].counts[d] = (byArea[f.area].counts[d] || 0) + 1; });
+    });
+
+    const corr = (area, field) => {
+      const sessions = s.sessions.filter((x) => x.dayType === 'racket' && x[field] !== undefined);
+      let hiSum = 0, hiN = 0, loSum = 0, loN = 0;
+      sessions.forEach((sess) => {
+        const flag = (sess.painFlags || []).find((f) => f.area === area && f.when === 'during');
+        const sev = flag ? flag.severity : 0;
+        if (sess[field] >= 70) { hiSum += sev; hiN++; } else { loSum += sev; loN++; }
+      });
+      if (!hiN || !loN) return '';
+      return 'At ≥70% intensity, average pain ' + (hiSum / hiN).toFixed(1) + '/10 vs ' + (loSum / loN).toFixed(1) + '/10 below that.';
+    };
+
+    const rank = (k) => (k === 'shoulder' ? 0 : k === 'knee' ? 1 : 2);
+    const areaKeys = Object.keys(byArea).sort((a, b) => rank(a) - rank(b) || byArea[a].label.localeCompare(byArea[b].label));
+
+    let body = '';
+    areaKeys.forEach((area) => {
+      const info = byArea[area];
+      const durKeys = Object.keys(info.counts).sort((a, b) => info.counts[b] - info.counts[a]);
+      const durLine = durKeys.map((k) => DUR_LABELS[k] + ' ' + info.counts[k]).join(' · ');
+      body += '<p><strong>' + esc(info.label) + '</strong>' + (durLine ? ' · pain by moment: ' + esc(durLine) : '') + '</p>';
+      const field = CORR_FIELD_BY_AREA[area];
+      const c = field ? corr(area, field) : '';
+      if (c) body += '<p class="muted">' + esc(c) + '</p>';
+    });
+    if (!body) return '';
+    return '<div class="card"><div class="card-title">Racket play — pain patterns</div>' + body + '</div>';
   }
 
   function pickLift(id) { chartLift = id; render(); }
@@ -2071,7 +2301,8 @@ LTA.ui = (function () {
     startRest, stopRest, adjustRest, restReady,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish, openRunNoteModal, saveRunNote,
     finishRacket, finishSimple, segPick,
-    openPainModal, savePainFlag,
+    openPainModal, savePainFlag, openRacketFollowUp, saveRacketFollowUp,
+    openAddPainArea, confirmAddPainArea, removeExtraAreaFromTemplate, removeSessionExtraArea,
     openFinishModal, confirmFinish, openRecoveryFinishModal, confirmRecoveryFinish, pickFeel,
     saveCheckIn,
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,

@@ -10,7 +10,8 @@
  *   shoulderState: { rungId, sessionsAtRung, extraRehabVolume: bool },
  *   weekCounter, currentWeek: WeekPlan, weekHistory: WeekPlan[],
  *   sessions: SessionLog[], reviews: ReviewLog[], painLog: PainFlag[],
- *   pendingCheckIns: [{date, area, context}]
+ *   pendingCheckIns: [{date, area, context}],
+ *   racketExtraAreas: [{key, label}]  // custom pain areas templated into every racket session
  * }
  * WeekPlan = { weekStart, isDeload, kneeCaution: bool,
  *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced', replacedBy?}],
@@ -22,7 +23,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 6;
+  const CURRENT_SCHEMA = 7;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -58,6 +59,7 @@ LTA.store = (function () {
       reviews: [],
       painLog: [],
       pendingCheckIns: [],
+      racketExtraAreas: [],  // [{key, label}] — custom pain areas templated into every racket session
     };
   }
 
@@ -68,6 +70,7 @@ LTA.store = (function () {
     3: function (s) { s.substitutions = {}; },
     4: function (s) { s.warmupNotes = {}; },
     5: function (s) { s.runWalkNote = ''; s.runCoreNote = ''; },
+    6: function (s) { s.racketExtraAreas = s.racketExtraAreas || []; },
   };
 
   function migrate(s) {
