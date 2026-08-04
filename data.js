@@ -141,7 +141,7 @@ LTA.data = (function () {
     { painGate: 'knee', video: yt('kneesovertoesguy patrick step') });
   ex('backward_walk', 'Backward Treadmill Walk', 'rehab', 'treadmill (belt off ok) or floor', [5, 8], 0,
     ['5–8 min, add incline over weeks', 'Push the floor away with the forefoot', 'Best knee-friendly warmup there is'], [],
-    { unit: 'seconds', painGate: 'knee', video: yt('kneesovertoesguy backward walking treadmill') });
+    { unit: 'minutes', painGate: 'knee', video: yt('kneesovertoesguy backward walking treadmill') });
   ex('band_lateral_walk', 'Banded Lateral Walk', 'rehab', 'mini band', [15, 15], 0,
     ['Stay low, feet apart', 'Don’t drag the trailing foot'], [], { painGate: 'knee' });
   ex('side_hip_abduction', 'Side-Lying Hip Abduction', 'rehab', 'bodyweight/ankle weight', [12, 15], 0,

@@ -196,7 +196,7 @@ LTA.engine = (function () {
 
     const allSetsAtTop = loggedSets.length >= presc.sets && loggedSets.every((x) => x.reps >= presc.repHi && x.weight >= st.currentWeightKg);
     if (allSetsAtTop) {
-      st.currentWeightKg = U.roundTo(topWeight + ex.incrementKg, ex.incrementKg);
+      st.currentWeightKg = Math.round((topWeight + ex.incrementKg) * 100) / 100;
       st.stallCount = 0;
       decide(ex.name + ' → ' + st.currentWeightKg + ' kg (topped the rep range).');
     } else {
@@ -207,7 +207,7 @@ LTA.engine = (function () {
       } else {
         st.stallCount++;
         if (st.stallCount >= 3) {
-          st.currentWeightKg = U.roundTo(st.currentWeightKg * 0.9, ex.incrementKg || 2.5);
+          st.currentWeightKg = Math.round(st.currentWeightKg * 0.9 * 100) / 100;
           st.stallCount = 0;
           decide(ex.name + ' stalled 3 sessions → reset to ' + st.currentWeightKg + ' kg to rebuild.');
         }
