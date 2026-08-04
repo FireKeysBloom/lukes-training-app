@@ -1743,6 +1743,9 @@ LTA.ui = (function () {
     const tpl = D.DAYS[d.dayType];
     const daySessions = E.sessionsForDate(d.date);
     let h = '<h3>' + U.niceDate(d.date) + '</h3><p>' + esc(tpl.name) + ' — ' + d.status + '</p>';
+    if (d.status === 'planned' || d.status === 'skipped') {
+      h += '<div class="card session-card"><div class="session-kind">' + esc(tpl.name) + '</div>' + sessionSummaryHTML(d.dayType) + '</div>';
+    }
     if (daySessions.length) {
       h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged</div>';
       daySessions.forEach((sess) => { h += completedSessionCardHTML(sess); });
