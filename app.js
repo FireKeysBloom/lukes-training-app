@@ -337,7 +337,7 @@ LTA.ui = (function () {
     const dayType = session.dayType;
     const tpl = D.DAYS[dayType];
     if (!session.warmupDone && tpl.warmup && tpl.warmup.length) { renderWarmup(view, tpl); return; }
-    if (dayType === 'run') { renderRunPlayer(view); return; }
+    if (dayType === 'run' && !session.runCompleted) { renderRunPlayer(view); return; }
     if (dayType === 'racket') { renderRacketPlayer(view); return; }
     if (dayType === 'z2' || dayType === 'rest') { renderSimplePlayer(view); return; }
 
@@ -1235,30 +1235,23 @@ LTA.ui = (function () {
       }
       const walkNote = S().runWalkNote;
       if (walkNote) h += '<div class="my-note">📝 ' + esc(walkNote) + '</div>';
-      h += '<button class="btn-link note-link" onclick="LTA.ui.openRunNoteModal(\'walk\')">' + (walkNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
+      h += '<button class="btn-link note-link" onclick="LTA.ui.openRunNoteModal()">' + (walkNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
     }
-    h += '<div class="card-title" style="margin-top:24px">Then: core</div>';
-    h += '<p class="muted">Dead bug 3×8 · Side plank 3×30–45 s · Pallof press 3×10 — logged as part of this session.</p>';
-    const coreNote = S().runCoreNote;
-    if (coreNote) h += '<div class="my-note">📝 ' + esc(coreNote) + '</div>';
-    h += '<button class="btn-link note-link" onclick="LTA.ui.openRunNoteModal(\'core\')">' + (coreNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
     h += '</div>';
     view.innerHTML = h;
   }
 
-  function openRunNoteModal(section) {
-    const isCore = section === 'core';
-    const note = isCore ? S().runCoreNote : S().runWalkNote;
-    const h = '<h3>Note — ' + (isCore ? 'Core' : 'Run / walk') + '</h3>' +
+  function openRunNoteModal() {
+    const note = S().runWalkNote;
+    const h = '<h3>Note — Run / walk</h3>' +
       '<textarea id="runNoteText" rows="4" placeholder="Tips, reminders, what worked…">' + esc(note) + '</textarea>' +
-      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveRunNote(\'' + section + '\')">Save note</button>';
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveRunNote()">Save note</button>';
     modal(h, true);
   }
 
-  function saveRunNote(section) {
+  function saveRunNote() {
     const s = S();
-    const v = $('runNoteText').value.trim();
-    if (section === 'core') s.runCoreNote = v; else s.runWalkNote = v;
+    s.runWalkNote = $('runNoteText').value.trim();
     LTA.store.save();
     closeModal();
     render();
@@ -1311,8 +1304,8 @@ LTA.ui = (function () {
     if (mode === 'run') {
       h += '<label>Knee pain during the run (0–10)</label>' + painSliderHTML('runPain', 0);
     }
-    h += '<label>How did it feel overall?</label>' + feelButtonsHTML();
-    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmRunFinish(\'' + mode + '\',' + (spec.stage ? spec.stage.id : -1) + ')">Save session</button>';
+    h += '<p class="muted">Next: core.</p>';
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmRunFinish(\'' + mode + '\',' + (spec.stage ? spec.stage.id : -1) + ')">Continue to core</button>';
     modal(h, true);
   }
 
@@ -1324,9 +1317,8 @@ LTA.ui = (function () {
     session.runMode = mode;
     session.runCompleted = true;
     if (stageId >= 0) session.runStageId = stageId;
-    session.feel = selectedFeel;
     closeModal();
-    completeSession();
+    render();
   }
 
   // ---------- Racket / simple players ----------
@@ -1998,7 +1990,7 @@ LTA.ui = (function () {
     });
     return Object.keys(counts).filter((id) => {
       const e = D.EXERCISES[id];
-      return e && (e.category === 'strength' || e.category === 'accessory' || e.category === 'power');
+      return e && (e.category === 'strength' || e.category === 'accessory' || e.category === 'power' || e.category === 'core');
     }).sort((a, b) => (D.MAIN_LIFTS.indexOf(b) >= 0) - (D.MAIN_LIFTS.indexOf(a) >= 0));
   }
 
