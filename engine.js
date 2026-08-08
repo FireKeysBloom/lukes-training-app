@@ -497,6 +497,7 @@ LTA.engine = (function () {
     const w = s.currentWeek;
     const day = w.days.find((d) => d.date === dateStr);
     if (!day || day.dayType === takeType) return null;
+    if (day.status === 'done') return null; // already completed — nothing to reschedule
     if (takeType === 'racket') return insertRacketSession(dateStr);
 
     const displaced = day.status === 'planned' ? day.dayType : null;

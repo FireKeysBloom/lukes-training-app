@@ -303,28 +303,46 @@ LTA.ui = (function () {
   }
 
   // "Do something else today": pull another scheduled day forward, or go freestyle.
+  // If today's session is already done, this instead logs an *additional* session —
+  // the schedule (today's or any other day's slot) must not be touched in that case.
   function openChangeToday() {
     const w = S().currentWeek;
     const today = U.todayStr();
     const todayDay = w.days.find((d) => d.date === today);
-    let h = '<h3>Do something else today</h3>';
-    const others = w.days.filter((d) => d.date !== today && d.status === 'planned' && d.dayType !== 'rest' && d.dayType !== (todayDay && todayDay.dayType));
-    if (others.length) {
-      h += '<label>Pull a scheduled day forward (the days trade places)</label>';
-      others.forEach((d) => {
-        h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'' + d.dayType + '\')">' + esc(D.DAYS[d.dayType].name) + ' <span class="muted">(' + U.weekdayName(d.date) + ')</span></button>';
-      });
+    const additional = todayDay && todayDay.status === 'done';
+    let h = additional ? '<h3>Log an additional session</h3><label>What did you do?</label>' : '<h3>Do something else today</h3>';
+    if (!additional) {
+      const others = w.days.filter((d) => d.date !== today && d.status === 'planned' && d.dayType !== 'rest' && d.dayType !== (todayDay && todayDay.dayType));
+      if (others.length) {
+        h += '<label>Pull a scheduled day forward (the days trade places)</label>';
+        others.forEach((d) => {
+          h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'' + d.dayType + '\')">' + esc(D.DAYS[d.dayType].name) + ' <span class="muted">(' + U.weekdayName(d.date) + ')</span></button>';
+        });
+      }
+      h += '<label>Or</label>';
     }
-    h += '<label>Or</label>' +
-      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'custom\')">🧩 Freestyle — build my own as I go</button>' +
-      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'racket\')">🎾 Racket session</button>' +
-      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'rest\')">🌙 Recovery day</button>';
+    h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'custom\')">🧩 Freestyle — build my own as I go</button>' +
+      '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'racket\')">🎾 Racket session</button>';
+    if (!additional) h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'rest\')">🌙 Recovery day</button>';
     modal(h, true);
   }
 
   function changeToday(type) {
     const today = U.todayStr();
+    const todayDay = E.dayForDate(today);
+    const additional = todayDay && todayDay.status === 'done';
     closeModal();
+    if (additional) {
+      // Extra session logged on top of an already-completed day — start it directly,
+      // don't reschedule anything (today's slot and other days stay exactly as they are).
+      session = {
+        id: U.uid(), date: today, dayType: type,
+        items: type === 'racket' ? [] : flattenDay(type), idx: 0,
+        sets: [], painFlags: [], pending: {}, startedAt: Date.now(), runDone: false,
+      };
+      render();
+      return;
+    }
     const decisions = LTA.engine.doDayInstead(today, type);
     if (type === 'racket') {
       session = { id: U.uid(), date: today, dayType: 'racket', items: [], sets: [], painFlags: [], pending: {}, startedAt: Date.now() };
