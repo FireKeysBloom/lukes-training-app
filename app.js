@@ -55,13 +55,18 @@ LTA.ui = (function () {
 
   // A new deploy should land without the user knowing anything about caches: when a fresh
   // worker takes over an already-installed app, reload once so the new code is what's running.
+  // The "already reloaded" guard lives in sessionStorage (not a plain variable) because it
+  // must survive the reload itself — otherwise a flapping service worker (seen on iOS under
+  // storage pressure) can retrigger controllerchange on every fresh load and reload forever.
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator) || !location.protocol.startsWith('http')) return;
     const hadController = !!navigator.serviceWorker.controller;
-    let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!hadController || reloaded) return;
-      reloaded = true;
+      if (!hadController) return;
+      const KEY = 'lta.swReloadedAt';
+      const last = Number(sessionStorage.getItem(KEY) || 0);
+      if (Date.now() - last < 10000) return;
+      sessionStorage.setItem(KEY, String(Date.now()));
       location.reload();
     });
     navigator.serviceWorker.register('sw.js').then((reg) => {
@@ -340,6 +345,7 @@ LTA.ui = (function () {
         items: type === 'racket' ? [] : flattenDay(type), idx: 0,
         sets: [], painFlags: [], pending: {}, startedAt: Date.now(), runDone: false,
       };
+      saveDraft();
       render();
       return;
     }
