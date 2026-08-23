@@ -25,24 +25,39 @@ LTA.engine = (function () {
     };
   }
 
+  // Mark every trainable day in a week as sick — used both when a brand-new week is
+  // generated while illness is active, and when the roll-forward loop closes a week early.
+  function applyIllnessToWeek(w) {
+    w.days.forEach((d) => { if (d.dayType !== 'rest') { d.status = 'sick'; d.wasDeload = !!w.isDeload; } });
+  }
+
   // Create/roll the current week so it always contains today.
   function ensureWeek() {
     const s = S();
     const monday = U.mondayOf(U.todayStr());
     if (!s.currentWeek) {
       s.currentWeek = generateWeekPlan(monday, s.weekCounter % 5 === 0);
+      if (s.illness && s.illness.active) applyIllnessToWeek(s.currentWeek);
       LTA.store.save();
       return;
     }
     let changed = false;
     while (s.currentWeek.weekStart < monday) {
-      // Mark unfinished planned days of the closing week as skipped.
-      s.currentWeek.days.forEach((d) => { if (d.status === 'planned' && d.dayType !== 'rest') d.status = 'skipped'; });
+      const sick = !!(s.illness && s.illness.active);
+      // Mark unfinished planned days of the closing week as skipped — or, while unwell, as sick
+      // (excused, not lost) so a program pause doesn't just silently eat the days.
+      s.currentWeek.days.forEach((d) => {
+        if (d.status === 'planned' && d.dayType !== 'rest') {
+          if (sick) { d.status = 'sick'; d.wasDeload = !!s.currentWeek.isDeload; } else d.status = 'skipped';
+        }
+      });
       const closing = s.currentWeek;
       s.weekHistory.push(closing);
-      s.weekCounter++;
+      // Deload/phase cadence pauses while unwell — a wiped week shouldn't advance the cycle.
+      if (!sick) s.weekCounter++;
       const nextStart = U.addDays(closing.weekStart, 7);
       s.currentWeek = generateWeekPlan(nextStart, s.weekCounter % 5 === 0);
+      if (sick) applyIllnessToWeek(s.currentWeek);
       // Block periodisation: coming off a deload, alternate Build ↔ Strength emphasis.
       if (closing.isDeload && !s.currentWeek.isDeload) {
         s.phase = s.phase === 'strength' ? 'build' : 'strength';
@@ -53,6 +68,86 @@ LTA.engine = (function () {
       changed = true;
     }
     if (changed) LTA.store.save();
+  }
+
+  // ---------- Illness pause ----------
+
+  // Report illness from startDate onward (may be retroactive). Marks every not-yet-done,
+  // non-rest day from startDate through whatever already exists (past days plus the rest of
+  // the current week) as 'sick'. Never touches a day already logged as 'done'.
+  function reportIllness(startDate) {
+    const s = S();
+    const today = U.todayStr();
+    if (!startDate || startDate > today) return null;
+    const existingStart = (s.illness && s.illness.active) ? s.illness.startDate : null;
+    const effectiveStart = (existingStart && existingStart < startDate) ? existingStart : startDate;
+
+    let count = 0;
+    const touchedWeeks = [];
+    const weeks = s.weekHistory.concat(s.currentWeek ? [s.currentWeek] : []);
+    weeks.forEach((w) => {
+      let touched = false;
+      w.days.forEach((d) => {
+        if (d.date >= effectiveStart && d.status !== 'done' && d.dayType !== 'rest') {
+          if (d.status !== 'sick') { count++; touched = true; }
+          d.status = 'sick';
+          d.wasDeload = !!w.isDeload;
+        }
+      });
+      if (touched) touchedWeeks.push(w);
+    });
+
+    // Retroactive macro-rhythm correction: an already-closed week this call just fully wiped
+    // out (no session was ever logged in it) already advanced weekCounter when it closed —
+    // undo that so the deload cycle reflects weeks he actually trained in, not calendar weeks.
+    let voided = 0;
+    touchedWeeks.forEach((w) => {
+      if (w === s.currentWeek) return; // not yet closed — nothing to correct
+      const trainable = w.days.filter((d) => d.dayType !== 'rest');
+      const fullyWiped = trainable.length && trainable.every((d) => d.status === 'sick');
+      if (fullyWiped) { s.weekCounter = Math.max(1, s.weekCounter - 1); voided++; }
+    });
+    if (voided && s.currentWeek) s.currentWeek.isDeload = (s.weekCounter % 5 === 0);
+
+    s.illness = { active: true, startDate: effectiveStart, reportedAt: today };
+    decide('Marked unwell from ' + U.niceDate(effectiveStart) + ' — training paused until you resume.');
+    LTA.store.save(true);
+    return count;
+  }
+
+  // Resume training: carry every genuinely-missed session (already-archived 'sick' days) into
+  // this week's still-open slots, in order, ahead of the week's own remaining sessions. Anything
+  // that doesn't fit is dropped. If any carried session came from a deload week, the whole
+  // resume week runs at deload intensity.
+  function resumeFromIllness() {
+    const s = S();
+    if (!s.illness || !s.illness.active) return null;
+    const w = s.currentWeek;
+
+    const carriedOver = [];
+    s.weekHistory.forEach((hw) => {
+      hw.days.forEach((d) => { if (d.status === 'sick' && d.dayType !== 'rest') carriedOver.push(d); });
+    });
+    carriedOver.sort((a, b) => (a.date < b.date ? -1 : 1));
+
+    const openSlots = w.days
+      .filter((d) => d.status !== 'done' && d.dayType !== 'rest')
+      .sort((a, b) => (a.date < b.date ? -1 : 1));
+
+    const queue = carriedOver.map((d) => d.dayType).concat(openSlots.map((d) => d.dayType));
+    const anyDeload = carriedOver.some((d) => d.wasDeload);
+    openSlots.forEach((slot, i) => {
+      if (i < queue.length) { slot.dayType = queue[i]; slot.status = 'planned'; delete slot.wasDeload; }
+    });
+    const carried = Math.min(carriedOver.length, openSlots.length);
+    const dropped = Math.max(0, queue.length - openSlots.length);
+    if (anyDeload) w.isDeload = true;
+
+    s.illness = { active: false, startDate: null, reportedAt: null };
+    decide('Welcome back — ' + carried + ' missed session' + (carried === 1 ? '' : 's') + ' carried into this week.' +
+      (dropped ? ' ' + dropped + (dropped === 1 ? " couldn't fit and was dropped." : " couldn't fit and were dropped.") : ''));
+    LTA.store.save(true);
+    return { carried: carried, dropped: dropped };
   }
 
   // Merge user-created exercises and edits into the static library.
@@ -420,7 +515,7 @@ LTA.engine = (function () {
     const s = S();
     const w = s.currentWeek;
     const day = w.days.find((d) => d.date === dateStr);
-    if (!day) return null;
+    if (!day || day.status === 'sick') return null;
 
     const displaced = (day.status === 'planned' && D.DAYS[day.dayType].kind === 'strength') ? day.dayType : null;
     if (day.status === 'planned' || day.status === 'skipped') {
@@ -498,6 +593,7 @@ LTA.engine = (function () {
     const day = w.days.find((d) => d.date === dateStr);
     if (!day || day.dayType === takeType) return null;
     if (day.status === 'done') return null; // already completed — nothing to reschedule
+    if (day.status === 'sick') return null; // marked unwell — resume training to reschedule
     if (takeType === 'racket') return insertRacketSession(dateStr);
 
     const displaced = day.status === 'planned' ? day.dayType : null;
@@ -551,11 +647,13 @@ LTA.engine = (function () {
     if (s.reviews.some((r) => r.weekStart === last.weekStart)) return null;
     // Only prompt for the most recently finished week.
     if (U.daysBetween(last.weekStart, U.todayStr()) > 14) return null;
+    // A fully-sick week has nothing meaningful to review.
+    if (!last.days.some((d) => d.dayType !== 'rest' && d.status !== 'sick')) return null;
     return last;
   }
 
   function adherenceOf(week) {
-    const planned = week.days.filter((d) => d.dayType !== 'rest' || d.status === 'replaced');
+    const planned = week.days.filter((d) => (d.dayType !== 'rest' && d.status !== 'sick') || d.status === 'replaced');
     const done = planned.filter((d) => d.status === 'done' || d.status === 'replaced');
     return planned.length ? done.length / planned.length : 1;
   }
@@ -627,7 +725,7 @@ LTA.engine = (function () {
   return {
     ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
-    doDayInstead, reviewDue, processReview, adherenceOf, racketCount,
+    doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness,
   };
 })();
 

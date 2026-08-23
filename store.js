@@ -11,10 +11,11 @@
  *   weekCounter, currentWeek: WeekPlan, weekHistory: WeekPlan[],
  *   sessions: SessionLog[], reviews: ReviewLog[], painLog: PainFlag[],
  *   pendingCheckIns: [{date, area, context}],
- *   racketExtraAreas: [{key, label}]  // custom pain areas templated into every racket session
+ *   racketExtraAreas: [{key, label}],  // custom pain areas templated into every racket session
+ *   illness: { active: bool, startDate, reportedAt }  // program pause while unwell — see LTA.engine.reportIllness
  * }
  * WeekPlan = { weekStart, isDeload, kneeCaution: bool,
- *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced', replacedBy?}],
+ *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced'|'sick', replacedBy?, wasDeload?}],
  *              decisions: string[] }
  */
 window.LTA = window.LTA || {};
@@ -23,7 +24,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 7;
+  const CURRENT_SCHEMA = 8;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -60,6 +61,7 @@ LTA.store = (function () {
       painLog: [],
       pendingCheckIns: [],
       racketExtraAreas: [],  // [{key, label}] — custom pain areas templated into every racket session
+      illness: { active: false, startDate: null, reportedAt: null },
     };
   }
 
@@ -71,6 +73,7 @@ LTA.store = (function () {
     4: function (s) { s.warmupNotes = {}; },
     5: function (s) { s.runWalkNote = ''; s.runCoreNote = ''; },
     6: function (s) { s.racketExtraAreas = s.racketExtraAreas || []; },
+    7: function (s) { s.illness = { active: false, startDate: null, reportedAt: null }; },
   };
 
   function migrate(s) {

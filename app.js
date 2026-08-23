@@ -138,6 +138,7 @@ LTA.ui = (function () {
     let badges = '<span class="badge">Week ' + s.weekCounter + '</span>';
     if (w && w.isDeload) badges += '<span class="badge deload">Deload</span>';
     if (w && w.kneeCaution) badges += '<span class="badge caution">Knee caution</span>';
+    if (s.illness && s.illness.active) badges += '<span class="badge caution">Unwell</span>';
     return badges;
   }
 
@@ -152,6 +153,17 @@ LTA.ui = (function () {
     const due = E.reviewDue();
     let h = '<div class="pagehead"><h2>Today</h2><div>' + topInfo() + '</div></div>';
     h += '<p class="muted">' + U.niceDate(today) + '</p>';
+
+    if (s.illness && s.illness.active) {
+      h += '<div class="card session-card">' +
+        '<div class="session-kind">🤒 Taking a break</div>' +
+        '<p>Focus on rest and recovery — the program is paused and nothing is due while you\'re unwell. ' +
+        'Marked unwell since ' + esc(U.niceDate(s.illness.startDate)) + '.</p>' +
+        '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmResume()">I\'m ready — resume training</button>' +
+        '</div>';
+      view.innerHTML = h;
+      return;
+    }
 
     if (due) {
       h += '<div class="card banner" onclick="LTA.ui.setTab(\'review\')">📋 Weekly review is ready — tap to shape next week.</div>';
@@ -184,6 +196,8 @@ LTA.ui = (function () {
       h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged today</div>';
       daySessions.forEach((sess) => { h += completedSessionCardHTML(sess); });
     }
+
+    h += '<button class="btn btn-ghost" onclick="LTA.ui.openIllnessModal()">🤒 Report illness</button>';
 
     const w = s.currentWeek;
     if (w && w.decisions.length) {
@@ -1737,7 +1751,7 @@ LTA.ui = (function () {
       const isToday = d.date === today;
       const daySessions = E.sessionsForDate(d.date);
       const chip = daySessions.length > 1 ? '✅×' + daySessions.length :
-        d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
+        d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'sick' ? '🤒' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
       const name = daySessions.length > 1 ? daySessions.map((sess) => (D.DAYS[sess.dayType] || {}).name || sess.dayType).join(' + ') : tpl.name;
       h += '<div class="week-day' + (isToday ? ' today' : '') + '" onclick="LTA.ui.dayActions(' + i + ')">' +
         '<div class="wd-date">' + U.weekdayName(d.date) + '<span>' + d.date.slice(8) + '</span></div>' +
@@ -1845,6 +1859,31 @@ LTA.ui = (function () {
     }
     render();
     if (date > today) toast('Planned. The week has been reshuffled — check the adjustments list.');
+  }
+
+  // ---------- Illness pause ----------
+
+  function openIllnessModal() {
+    const today = U.todayStr();
+    const h = '<h3>🤒 Report illness</h3>' +
+      '<p class="muted">Training pauses from this date — nothing will be due until you say you\'re ready to continue.</p>' +
+      '<label>Unwell since</label><input type="date" id="illStart" class="input" max="' + today + '" value="' + today + '">' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmIllness()">Confirm</button>';
+    modal(h, true);
+  }
+
+  function confirmIllness() {
+    const date = $('illStart').value;
+    closeModal();
+    const count = E.reportIllness(date);
+    render();
+    if (count != null) toast('Marked unwell since ' + U.niceDate(date) + '. Rest up.');
+  }
+
+  function confirmResume() {
+    const result = E.resumeFromIllness();
+    render();
+    if (result) toast('Welcome back — ' + result.carried + ' missed session' + (result.carried === 1 ? '' : 's') + ' carried into this week.');
   }
 
   // ---------- Review view ----------
@@ -2326,6 +2365,7 @@ LTA.ui = (function () {
     saveCheckIn,
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,
     openQuickLogModal, confirmQuickLog,
+    openIllnessModal, confirmIllness, confirmResume,
     submitReview, pickLift,
     saveSupabase, doSignIn, doSignUp, doSignOut, syncNow, importFile, saveTraining, resetAll,
     closeModal,
