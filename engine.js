@@ -31,6 +31,12 @@ LTA.engine = (function () {
     w.days.forEach((d) => { if (d.dayType !== 'rest') { d.status = 'sick'; d.wasDeload = !!w.isDeload; } });
   }
 
+  // The 4 gym/strength sessions the deload cadence cares about (excludes run/z2/racket/custom).
+  const GYM_DAY_TYPES = ['upperA', 'upperB', 'lowerA', 'lowerB'];
+  function completedGymDays(week) {
+    return week.days.filter((d) => GYM_DAY_TYPES.includes(d.dayType) && d.status === 'done').length;
+  }
+
   // Create/roll the current week so it always contains today.
   function ensureWeek() {
     const s = S();
@@ -53,8 +59,16 @@ LTA.engine = (function () {
       });
       const closing = s.currentWeek;
       s.weekHistory.push(closing);
-      // Deload/phase cadence pauses while unwell — a wiped week shouldn't advance the cycle.
-      if (!sick) s.weekCounter++;
+      // Deload/phase cadence pauses while unwell, and now also while under-trained: a week
+      // needs at least 3 of its 4 gym sessions done to count toward the 5-week cycle.
+      const gymDone = completedGymDays(closing);
+      const metCadence = !sick && gymDone >= 3;
+      closing.countedTowardCadence = metCadence;
+      if (metCadence) {
+        s.weekCounter++;
+      } else if (!sick) {
+        decide('Only ' + gymDone + '/4 gym sessions completed this week — does not count toward the deload cycle.');
+      }
       const nextStart = U.addDays(closing.weekStart, 7);
       s.currentWeek = generateWeekPlan(nextStart, s.weekCounter % 5 === 0);
       if (sick) applyIllnessToWeek(s.currentWeek);
@@ -98,14 +112,16 @@ LTA.engine = (function () {
     });
 
     // Retroactive macro-rhythm correction: an already-closed week this call just fully wiped
-    // out (no session was ever logged in it) already advanced weekCounter when it closed —
-    // undo that so the deload cycle reflects weeks he actually trained in, not calendar weeks.
+    // out (no session was ever logged in it) may have already advanced weekCounter when it
+    // closed — undo that so the deload cycle reflects weeks he actually trained in, not
+    // calendar weeks. Only undo it if the week actually counted (it may not have, e.g. it
+    // fell short of the gym-session threshold even before illness wiped it further).
     let voided = 0;
     touchedWeeks.forEach((w) => {
       if (w === s.currentWeek) return; // not yet closed — nothing to correct
       const trainable = w.days.filter((d) => d.dayType !== 'rest');
       const fullyWiped = trainable.length && trainable.every((d) => d.status === 'sick');
-      if (fullyWiped) { s.weekCounter = Math.max(1, s.weekCounter - 1); voided++; }
+      if (fullyWiped && w.countedTowardCadence) { s.weekCounter = Math.max(1, s.weekCounter - 1); voided++; }
     });
     if (voided && s.currentWeek) s.currentWeek.isDeload = (s.weekCounter % 5 === 0);
 
@@ -725,7 +741,7 @@ LTA.engine = (function () {
   return {
     ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
-    doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness,
+    doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness, completedGymDays,
   };
 })();
 
@@ -781,7 +797,9 @@ LTA.dev = (function () {
       // Force-roll into next week.
       week.days.forEach((d) => { if (d.status === 'planned' && d.dayType !== 'rest') d.status = 'skipped'; });
       s.weekHistory.push(week);
-      s.weekCounter++;
+      const metCadence = LTA.engine.completedGymDays(week) >= 3;
+      week.countedTowardCadence = metCadence;
+      if (metCadence) s.weekCounter++;
       s.currentWeek = LTA.engine.generateWeekPlan(U.addDays(week.weekStart, 7), s.weekCounter % 5 === 0);
       LTA.engine.processReview(week.weekStart, Object.assign({ sleep: 4, energy: 4, soreness: 2, motivation: 4, kneeMaxPain: 0, kneeMorningPain: 0, shoulderMaxPain: 0 }, opts.review || {}));
     }
