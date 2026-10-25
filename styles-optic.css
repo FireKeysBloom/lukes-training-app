@@ -248,7 +248,12 @@ textarea, .input {
 canvas { width: 100%; height: auto; margin-top: 8px; background: var(--card); border-radius: 8px; }
 .dotk, .dots { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
 .dotk { background: var(--warn); }
-.dots { background: var(--accent); }
+.dots { background: var(--accent2); }
+.dota { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); }
+.seg-wrap { flex-wrap: wrap; }
+.skip-swap { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+.skip-swap .muted { margin: 0; }
+.abd-log { margin-top: 10px; }
 
 .review-item { padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .review-item:last-child { border-bottom: none; }

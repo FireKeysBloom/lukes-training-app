@@ -2,6 +2,7 @@
  *
  * Exercise = { id, name, category: 'strength'|'accessory'|'rehab'|'power'|'conditioning'|'mobility'|'core',
  *              equipment, repRange:[lo,hi], incrementKg, cues:[], subs:[], painGate?:'knee'|'shoulder',
+ *              abdominalSub?: exerciseId  (gentler stand-in while the lower-abdominal caution is on),
  *              unit?: 'reps'|'seconds'|'meters', video?: url }
  *
  * Session structure (v2): every lifting day runs Power → Strength → Muscle → Resilience,
@@ -27,6 +28,9 @@ LTA.data = (function () {
   ex('broad_jump', 'Broad Jump', 'power', 'floor', [3, 3], 0,
     ['Arms swing hard', 'Stick the landing, hips back', 'Walk back, full rest between reps'], ['box_jump', 'surf_popup'],
     { video: yt('standing broad jump technique') });
+  ex('step_up_power', 'Explosive Step-Up (low box)', 'power', 'low box', [3, 3], 0,
+    ['Drive through the whole foot and punch the knee up', 'Step down under control — no landing impact', 'Full intent every rep; a gentler stand-in for jumps while the lower abs settle'], ['broad_jump', 'box_jump'],
+    { video: yt('explosive step up power exercise') });
   ex('mb_chest_throw', 'Med-Ball Chest Throw', 'power', 'medicine ball + wall', [5, 5], 1,
     ['Throw as hard as possible', 'Catch, reset, repeat — no rush', 'Power first, before fatigue'], [],
     { video: yt('medicine ball chest pass power training') });
@@ -156,6 +160,9 @@ LTA.data = (function () {
   // ---- Core ----
   ex('dead_bug', 'Dead Bug', 'core', 'floor', [8, 8], 0, ['Low back glued down', 'Exhale as limbs extend'], [],
     { video: yt('dead bug exercise form') });
+  ex('heel_tap_dead_bug', 'Heel-Tap Dead Bug (bent knees)', 'core', 'floor', [8, 8], 0,
+    ['Knees stay bent at 90° — short lever, much lower load on the lower abs', 'Low back glued down, exhale as the heel taps', 'Stop short of any pull or pinch low in the belly'], ['dead_bug'],
+    { video: yt('dead bug heel taps regression') });
   ex('side_plank', 'Side Plank', 'core', 'floor', [30, 45], 0, ['Straight line head to feet', 'Hips high'], [], { unit: 'seconds' });
   ex('pallof_press', 'Pallof Press', 'core', 'cable/band', [10, 10], 1.25, ['Resist the twist', 'Slow press out'], ['rotational_mb_throw'],
     { video: yt('pallof press form') });
@@ -201,6 +208,7 @@ LTA.data = (function () {
     trap_bar_dl: { barKg: 25 },
     landmine_press: { barKg: 10 }, // ~half the bar carries to the pressing end
     box_jump: { bodyweight: true }, broad_jump: { bodyweight: true }, surf_popup: { bodyweight: true },
+    step_up_power: { bodyweight: true }, heel_tap_dead_bug: { bodyweight: true },
     pull_up: { bodyweight: true }, scap_pull_up: { bodyweight: true },
     pushup_plus: { bodyweight: true }, dead_hang: { bodyweight: true },
     side_plank: { bodyweight: true }, dead_bug: { bodyweight: true },
@@ -233,9 +241,20 @@ LTA.data = (function () {
     sl_calf_raise: 'each', side_hip_abduction: 'each', side_plank: 'each',
     hip_airplane: 'each', cable_row_1arm: 'each', landmine_press: 'each',
     med_ball_chop: 'each', cable_er_9090: 'each', side_lying_er: 'each',
-    dead_bug: 'alternate', pallof_press: 'each', rotational_mb_throw: 'each',
+    dead_bug: 'alternate', heel_tap_dead_bug: 'alternate', pallof_press: 'each', rotational_mb_throw: 'each',
   };
   Object.keys(SIDES_META).forEach((id) => { if (EX[id]) EX[id].sides = SIDES_META[id]; });
+
+  // Lower-abdominal caution: while LTA.store state.abdominalState.caution is on, the engine swaps these
+  // for the gentler option. Kept as its own map (not painGate, which is single-valued and already used).
+  const ABDOMINAL_SUBS = {
+    dead_bug: 'heel_tap_dead_bug',
+    broad_jump: 'step_up_power',
+    box_jump: 'step_up_power',
+    rotational_mb_throw: 'pallof_press',
+    med_ball_chop: 'pallof_press',
+  };
+  Object.keys(ABDOMINAL_SUBS).forEach((id) => { if (EX[id]) EX[id].abdominalSub = ABDOMINAL_SUBS[id]; });
 
   // Isometric holds have no up/down rhythm.
   ['side_plank', 'dead_hang', 'farmer_carry'].forEach((id) => { if (EX[id]) EX[id].tempo = 'hold'; });

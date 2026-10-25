@@ -12,6 +12,9 @@ Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage
 - **Form first** — per-session tailored warmups, 2–3 cues per exercise, and a video search link to qualified coaches (Squat University, kneesovertoesguy, GMB, E3 Rehab, …) on every lift.
 - **Graded return-to-run** — 11 stages from incline walking to a 5k, each gated on discomfort staying ≤2/10 during the run and the next morning before advancing. Sprint work unlocks after 20 min continuous running clears the gate.
 - **Overhead loading ladder** — landmine press → barbell OHP in 5 rungs behind the same gating, with rotator-cuff, lower-trap, serratus and thoracic work as permanent fixtures on both upper days rather than a temporary phase.
+- **Skip or swap the first half** — on run days (run → core) and Engine days (conditioning → mobility) you can skip the first part or swap it for other cardio (quick picks or freestyle) and go straight to the second half. A skipped or swapped part never counts toward the run ladder, sprint ladder or knee check-in.
+- **Racket and surf sessions** — Tennis, Padel, Surf or any other sport, logged with sport-specific labels (paddling and pop-up intensity for surf). Surf reshuffles the week like racket play.
+- **Lower-abdominal monitoring** — flag it mid-session (with left/right/both), on surf sessions, in the morning check-in and in the weekly review; the Progress tab charts it. At 3/10 or more, dead bug, box/broad jumps and rotational med-ball work swap to gentler options until it settles.
 - **Next-morning check-ins** — after runs, overhead pressing or play, the app follows up the next day and advances or regresses the relevant ladder on the answer.
 - **Weekly review** — sleep/energy/soreness questionnaire that builds the following week and explains every adjustment it makes.
 - **Tracking** — e1RM trends, run-stage timeline, pain trends, adherence, all charted.

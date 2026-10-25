@@ -256,6 +256,20 @@ LTA.engine = (function () {
     if (w && w.kneeCaution && dayType === 'z2') {
       blocks[0].items.forEach((it) => { it.notes = 'Bike only this week (knee caution)'; });
     }
+
+    // Lower-abdominal caution: gated exercises are replaced by a gentler option. Progression
+    // state of the original is untouched (it simply holds until the caution clears).
+    if (s.abdominalState && s.abdominalState.caution) {
+      blocks.forEach((b) => b.items.forEach((it) => {
+        const e = D.EXERCISES[it.exerciseId];
+        const to = e && e.abdominalSub;
+        if (to && D.EXERCISES[to]) {
+          it.swappedFrom = it.swappedFrom || it.exerciseId;
+          it.exerciseId = to;
+          it.notes = 'Lower-abdominal caution: gentler option';
+        }
+      }));
+    }
     return blocks;
   }
 
@@ -409,11 +423,45 @@ LTA.engine = (function () {
       if (shoulderRacket >= 3) {
         dropRung('Shoulder pain ' + shoulderRacket + '/10 while playing — ease off overhead volume this week');
       } else {
-        queueCheckIn(session.date, 'shoulder', 'racket', shoulderRacket);
+        queueCheckIn(session.date, 'shoulder', 'racket', shoulderRacket, null, session.sport);
+      }
+    }
+
+    // Lower abdominal (any session type): >=3 during switches the gentler options on now;
+    // anything milder is checked again tomorrow morning.
+    const abdFlags = (session.painFlags || []).filter((f) => f.area === 'abdominal');
+    if (abdFlags.length) {
+      const abdDuring = maxFlag(session.painFlags, 'abdominal', 'during');
+      const abdLater = maxFlag(session.painFlags, 'abdominal', 'later');
+      const worst = Math.max(abdDuring, abdLater);
+      const worstFlag = abdFlags.slice().sort((a, b) => b.severity - a.severity)[0];
+      const side = worstFlag.side || null;
+      if (worst >= 3) {
+        setAbdominalCaution(true, side, session.date, 'Lower abdominal ' + worst + '/10' + sideLabel(side) + ' during ' + (session.sport === 'Surf' ? 'surfing' : session.dayType === 'racket' ? 'play' : 'training'));
+      } else if (worst > 0) {
+        queueCheckIn(session.date, 'abdominal', abdContext(session), worst, side, session.sport);
       }
     }
 
     LTA.store.save(true);
+  }
+
+  function sideLabel(side) { return side ? ' (' + side + ')' : ''; }
+  function abdContext(session) { return session.dayType === 'racket' ? 'racket' : 'training'; }
+
+  function setAbdominalCaution(on, side, date, reason, quiet) {
+    const s = S();
+    if (!s.abdominalState) s.abdominalState = { caution: false, side: null, since: null };
+    const a = s.abdominalState;
+    if (on) {
+      if (!a.caution && !quiet) decide(reason + ' → dead bug, jumps and rotational throws swap to gentler options until it settles.');
+      a.caution = true;
+      a.side = side || a.side || null;
+      a.since = a.since || date || U.todayStr();
+    } else if (a.caution) {
+      if (!quiet) decide(reason + ' → lower-abdominal caution cleared, normal exercises are back.');
+      a.caution = false; a.side = null; a.since = null;
+    }
   }
 
   function maxFlag(flags, area, when) {
@@ -431,20 +479,25 @@ LTA.engine = (function () {
     (entries || []).forEach((e) => {
       if (!e.severity) return;
       const flag = { area: e.area, label: e.label, severity: e.severity, when: 'later', date, context: 'racket', durations: e.durations || [] };
+      if (e.side) flag.side = e.side;
       s.painLog.push(flag);
       if (sess) { sess.painFlags = sess.painFlags || []; sess.painFlags.push(flag); }
       if (e.area === 'shoulder' && e.severity >= 3) dropRung('Shoulder pain ' + e.severity + '/10 after playing');
       if (e.area === 'knee' && e.severity >= 3) s.currentWeek.kneeCaution = true;
+      if (e.area === 'abdominal' && e.severity >= 3) setAbdominalCaution(true, e.side, date, 'Lower abdominal ' + e.severity + '/10' + sideLabel(e.side) + ' after playing');
     });
     LTA.store.save(true);
   }
 
   // ---------- Morning check-ins ----------
 
-  function queueCheckIn(date, area, context, painDuring) {
+  function queueCheckIn(date, area, context, painDuring, side, sport) {
     const s = S();
     if (s.pendingCheckIns.some((c) => c.date === date && c.area === area && c.context === context)) return;
-    s.pendingCheckIns.push({ date, area, context, painDuring: painDuring || 0 });
+    const ci = { date, area, context, painDuring: painDuring || 0 };
+    if (side) ci.side = side;
+    if (sport) ci.sport = sport;
+    s.pendingCheckIns.push(ci);
   }
 
   function dueCheckIns() {
@@ -455,7 +508,16 @@ LTA.engine = (function () {
   function resolveCheckIn(ci, severity) {
     const s = S();
     s.pendingCheckIns = s.pendingCheckIns.filter((c) => !(c.date === ci.date && c.area === ci.area && c.context === ci.context));
-    s.painLog.push({ area: ci.area, severity, when: 'nextMorning', date: U.todayStr(), context: ci.context });
+    const logged = { area: ci.area, severity, when: 'nextMorning', date: U.todayStr(), context: ci.context };
+    if (ci.side) logged.side = ci.side;
+    s.painLog.push(logged);
+
+    if (ci.area === 'abdominal') {
+      // The morning answer decides: in-session pain already switched the caution on, so a settled
+      // morning (<=2) is what clears it again.
+      if (severity >= 3) setAbdominalCaution(true, ci.side, U.todayStr(), 'Lower abdominal ' + severity + '/10' + sideLabel(ci.side) + ' the morning after');
+      else setAbdominalCaution(false, null, null, 'Lower abdominal ' + severity + '/10 this morning');
+    }
 
     if (ci.area === 'knee' && ci.context === 'run') {
       const worst = Math.max(ci.painDuring || 0, severity);
@@ -716,6 +778,17 @@ LTA.engine = (function () {
       decisions.push('Shoulder settled → rehab volume back to normal.');
     }
 
+    // Lower abdominal (answers.abdominalMaxPain is absent on older callers).
+    if (answers.abdominalMaxPain != null) {
+      if (answers.abdominalMaxPain >= 3) {
+        setAbdominalCaution(true, answers.abdominalSide, U.todayStr(), '', true);
+        decisions.push('Lower abdominal flagged ' + answers.abdominalMaxPain + '/10' + sideLabel(answers.abdominalSide) + ' → gentler dead bug, jump and throw options stay on.');
+      } else if (s.abdominalState && s.abdominalState.caution && answers.abdominalMaxPain <= 2) {
+        setAbdominalCaution(false, null, null, '', true);
+        decisions.push('Lower abdominal settled → normal exercises are back.');
+      }
+    }
+
     // Adherence.
     if (adherence < 0.5) {
       const trainDays = s.currentWeek.days.filter((d) => d.dayType !== 'rest' && d.status === 'planned');
@@ -801,7 +874,7 @@ LTA.dev = (function () {
       week.countedTowardCadence = metCadence;
       if (metCadence) s.weekCounter++;
       s.currentWeek = LTA.engine.generateWeekPlan(U.addDays(week.weekStart, 7), s.weekCounter % 5 === 0);
-      LTA.engine.processReview(week.weekStart, Object.assign({ sleep: 4, energy: 4, soreness: 2, motivation: 4, kneeMaxPain: 0, kneeMorningPain: 0, shoulderMaxPain: 0 }, opts.review || {}));
+      LTA.engine.processReview(week.weekStart, Object.assign({ sleep: 4, energy: 4, soreness: 2, motivation: 4, kneeMaxPain: 0, kneeMorningPain: 0, shoulderMaxPain: 0, abdominalMaxPain: 0 }, opts.review || {}));
     }
     LTA.store.save(true);
     console.log('Simulated', n, 'weeks. weekCounter =', LTA.store.getState().weekCounter);
