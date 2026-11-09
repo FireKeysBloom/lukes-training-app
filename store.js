@@ -13,10 +13,12 @@
  *   pendingCheckIns: [{date, area, context, painDuring, side?, sport?}],  // side: 'left'|'right'|'both' (lower abdominal)
  *   racketExtraAreas: [{key, label}],  // custom pain areas templated into every racket session
  *   illness: { active: bool, startDate, reportedAt },  // program pause while unwell — see LTA.engine.reportIllness
+ *   lightWeek: { active, startDate, endDate, checkIns: {date: 'good'|'meh'|'rough'}, done: {date: sessionId} },  // light-week overlay — never touches weekCounter/progression
+ *   lightHistory: [{startDate, endDate, endedAt}],
  *   abdominalState: { caution: bool, side: 'left'|'right'|'both'|null, since: date|null }  // gentler core/jump options while on
  * }
  * WeekPlan = { weekStart, isDeload, kneeCaution: bool,
- *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced'|'sick', replacedBy?, wasDeload?}],
+ *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced'|'sick'|'light', replacedBy?, wasDeload?}],
  *              decisions: string[] }
  */
 window.LTA = window.LTA || {};
@@ -25,7 +27,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 9;
+  const CURRENT_SCHEMA = 10;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -64,6 +66,8 @@ LTA.store = (function () {
       racketExtraAreas: [],  // [{key, label}] — custom pain areas templated into every racket session
       illness: { active: false, startDate: null, reportedAt: null },
       abdominalState: { caution: false, side: null, since: null },
+      lightWeek: { active: false, startDate: null, endDate: null, checkIns: {}, done: {} },
+      lightHistory: [],
     };
   }
 
@@ -77,6 +81,7 @@ LTA.store = (function () {
     6: function (s) { s.racketExtraAreas = s.racketExtraAreas || []; },
     7: function (s) { s.illness = { active: false, startDate: null, reportedAt: null }; },
     8: function (s) { s.abdominalState = s.abdominalState || { caution: false, side: null, since: null }; },
+    9: function (s) { s.lightWeek = { active: false, startDate: null, endDate: null, checkIns: {}, done: {} }; s.lightHistory = []; },
   };
 
   function migrate(s) {

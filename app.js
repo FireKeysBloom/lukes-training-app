@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.10.25.10';
+  const APP_VERSION = '2026.11.09.11';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -140,6 +140,7 @@ LTA.ui = (function () {
     if (w && w.kneeCaution) badges += '<span class="badge caution">Knee caution</span>';
     if (s.abdominalState && s.abdominalState.caution) badges += '<span class="badge caution">Abdominal caution' + (s.abdominalState.side ? ' (' + s.abdominalState.side + ')' : '') + '</span>';
     if (s.illness && s.illness.active) badges += '<span class="badge caution">Unwell</span>';
+    if (s.lightWeek && s.lightWeek.active) badges += '<span class="badge deload">Light week</span>';
     return badges;
   }
 
@@ -161,7 +162,14 @@ LTA.ui = (function () {
         '<p>Focus on rest and recovery — the program is paused and nothing is due while you\'re unwell. ' +
         'Marked unwell since ' + esc(U.niceDate(s.illness.startDate)) + '.</p>' +
         '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmResume()">I\'m ready — resume training</button>' +
+        '<button class="btn btn-ghost" onclick="LTA.ui.openLightWeekModal()">🍃 Ease back in with a light week instead</button>' +
         '</div>';
+      view.innerHTML = h;
+      return;
+    }
+
+    if (s.lightWeek && s.lightWeek.active) {
+      h += lightCardHTML();
       view.innerHTML = h;
       return;
     }
@@ -199,6 +207,7 @@ LTA.ui = (function () {
     }
 
     h += '<button class="btn btn-ghost" onclick="LTA.ui.openIllnessModal()">🤒 Report illness</button>';
+    h += '<button class="btn btn-ghost" onclick="LTA.ui.openLightWeekModal()">🍃 Start a light week</button>';
 
     const w = s.currentWeek;
     if (w && w.decisions.length) {
@@ -253,7 +262,7 @@ LTA.ui = (function () {
     if (sess.dayType === 'racket' && sess.movementIntensity !== undefined) bits.push((surfed ? 'standing/riding ' : 'movement ') + sess.movementIntensity + '%');
     skipSwapBits(sess).forEach((b) => bits.push(b));
     let h = '<div class="card session-card done-card">';
-    h += '<div class="session-kind">' + esc(tpl ? tpl.name : sess.dayType) + '</div>';
+    h += '<div class="session-kind">' + esc(tpl ? tpl.name : (sess.lightTitle || sess.dayType)) + '</div>';
     if (bits.length) h += '<p class="muted">' + esc(bits.join(' · ')) + '</p>';
     if (sess.notes) h += '<p>' + esc(sess.notes) + '</p>';
     if (sess.dayType === 'racket') h += '<button class="btn-mini pain" onclick="LTA.ui.openRacketFollowUp(\'' + sess.id + '\')">Pain later?</button>';
@@ -1930,7 +1939,7 @@ LTA.ui = (function () {
       const isToday = d.date === today;
       const daySessions = E.sessionsForDate(d.date);
       const chip = daySessions.length > 1 ? '✅×' + daySessions.length :
-        d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'sick' ? '🤒' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
+        d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'sick' ? '🤒' : d.status === 'light' ? '🍃' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
       const name = daySessions.length > 1 ? daySessions.map((sess) => (D.DAYS[sess.dayType] || {}).name || sess.dayType).join(' + ') : tpl.name;
       h += '<div class="week-day' + (isToday ? ' today' : '') + '" onclick="LTA.ui.dayActions(' + i + ')">' +
         '<div class="wd-date">' + U.weekdayName(d.date) + '<span>' + d.date.slice(8) + '</span></div>' +
@@ -2063,6 +2072,90 @@ LTA.ui = (function () {
     const result = E.resumeFromIllness();
     render();
     if (result) toast('Welcome back — ' + result.carried + ' missed session' + (result.carried === 1 ? '' : 's') + ' carried into this week.');
+  }
+
+  // ---------- Light week ----------
+
+  function lightCardHTML() {
+    const s = S();
+    const lw = s.lightWeek;
+    const today = U.todayStr();
+    const idx = E.lightDayIndex();
+    const plan = D.LIGHT_PLAN[idx];
+    const check = lw.checkIns[today];
+    const loggedId = lw.done[today];
+    const logged = loggedId && s.sessions.find((x) => x.id === loggedId);
+    let h = '<div class="card session-card">' +
+      '<div class="session-kind">🍃 Light week · day ' + (idx + 1) + ' of 7</div>' +
+      '<p class="muted">The regular plan is on hold and this week doesn\'t count toward your training weeks or deload cycle.</p>';
+    h += '<h3>' + esc(plan.title) + ' <span class="muted">· ' + esc(plan.minutes) + ' min</span></h3>';
+    h += '<div class="seg" id="seg-lightCheck">' + [['good', '🙂 Good'], ['meh', '😐 Meh'], ['rough', '🤒 Rough']].map((o) =>
+      '<button class="seg-btn' + (check === o[0] ? ' active' : '') + '" onclick="LTA.ui.lightCheckIn(\'' + o[0] + '\')">' + o[1] + '</button>').join('') + '</div>';
+    if (!check) h += '<p class="muted">How do you feel this morning? It sets today\'s dose.</p>';
+    if (check === 'rough') {
+      h += '<p><strong>Rest today.</strong> Fluids, food, sleep. Nothing is lost — the light week simply waits.</p>' +
+        '<button class="btn btn-ghost" onclick="LTA.ui.openIllnessModal()">🤒 Report illness (pause everything)</button>';
+    } else {
+      if (check === 'meh') h += '<p><strong>Trim it:</strong> do about two-thirds of this, or swap it for an easy walk.</p>';
+      h += '<ul class="decisions">' + plan.steps.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+      h += '<p class="muted">' + esc(plan.note) + '</p>';
+      if (logged) h += '<div class="done-note muted">✅ Logged today.</div>';
+      else h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openLightLog()">Log today\'s session</button>';
+    }
+    h += '</div>';
+    h += '<div class="card"><div class="card-title">Light-week rules</div><ul class="decisions">' +
+      D.LIGHT_RULES.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul><p class="muted">' + esc(D.LIGHT_STOP_SIGNS) + '</p></div>';
+    h += '<button class="btn btn-ghost" onclick="LTA.ui.endLightWeek()">End light week early</button>';
+    return h;
+  }
+
+  function openLightWeekModal() {
+    const h = '<h3>🍃 Light week</h3>' +
+      '<p>A 7-day gentle return after a virus or when you\'re run down: easy walks and bike, two light full-body strength days, no HIIT, running or heavy lifting, with a daily feel check.</p>' +
+      '<p class="muted">It sits beside your regular plan. It does not count as a training week, doesn\'t move the deload cycle, and doesn\'t change any weights, run stages or pain states. The regular plan resumes after day 7.</p>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmLightWeek()">Start light week today</button>';
+    modal(h, true);
+  }
+
+  function confirmLightWeek() {
+    closeModal();
+    if (E.startLightWeek()) { tab = 'today'; render(); toast('Light week started. Go easy.'); }
+  }
+
+  function lightCheckIn(v) {
+    E.setLightCheckIn(U.todayStr(), v);
+    render();
+  }
+
+  function openLightLog() {
+    selectedFeel = 4;
+    const h = '<h3>Log light session</h3>' +
+      '<label>Duration (minutes)</label><input type="number" id="lgDuration" class="input" min="0" step="5">' +
+      '<label>How did it feel?</label>' + feelButtonsHTML() +
+      '<label>Symptoms during / after</label>' +
+      '<div class="seg" id="seg-lightSym">' + ['None', 'Mild', 'Worse'].map((l, i) =>
+        '<button class="seg-btn' + (i === 0 ? ' active' : '') + '" onclick="LTA.ui.segPick(this)">' + l + '</button>').join('') + '</div>' +
+      '<label>Notes</label><textarea id="lgNotes" rows="2" placeholder="optional"></textarea>' +
+      '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmLightLog()">Save</button>';
+    modal(h, true);
+  }
+
+  function confirmLightLog() {
+    const b = document.querySelector('#seg-lightSym .seg-btn.active');
+    const symptoms = b ? b.textContent.toLowerCase() : 'none';
+    const dur = $('lgDuration').value;
+    const notes = $('lgNotes').value.trim();
+    closeModal();
+    E.logLightSession({ durationMin: dur ? Number(dur) : 0, feel: selectedFeel, symptoms, notes });
+    render();
+    toast(symptoms === 'worse' ? 'Logged. Symptoms got worse — take tomorrow as a rest day and consider reporting illness.' : 'Light session logged.');
+  }
+
+  function endLightWeek() {
+    if (!confirm('End the light week and go back to the regular plan?')) return;
+    E.endLightWeek();
+    render();
+    toast('Back to the regular plan.');
   }
 
   // ---------- Review view ----------
@@ -2568,6 +2661,7 @@ LTA.ui = (function () {
     dayActions, applyDaySwap, markSkipped, unskip, openRacketModal, confirmRacket,
     openQuickLogModal, confirmQuickLog,
     openIllnessModal, confirmIllness, confirmResume,
+    openLightWeekModal, confirmLightWeek, lightCheckIn, openLightLog, confirmLightLog, endLightWeek,
     submitReview, pickLift,
     saveSupabase, doSignIn, doSignUp, doSignOut, syncNow, importFile, saveTraining, resetAll,
     closeModal,

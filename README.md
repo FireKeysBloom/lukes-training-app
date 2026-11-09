@@ -59,4 +59,6 @@ On iPhone: open that URL in Safari → Share → **Add to Home Screen**.
 | `sync.js` | Supabase sync (plain fetch) |
 | `sw.js` | Offline cache |
 
+**Light week** (Today tab → 🍃 Start a light week): a 7-day graded-return plan for after a virus or when run down — easy aerobic days, two light full-body strength days, daily feel check, no HIIT/running/heavy lifting. It overlays the regular plan without counting as a training week, moving the deload cycle, or changing any progression state.
+
 Console dev harness: `LTA.dev.simulateWeeks(6, { kneePainOnRuns: [0,0,5], missRate: 0.1 })` fast-forwards state for testing.

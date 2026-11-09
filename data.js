@@ -388,5 +388,34 @@ LTA.data = (function () {
     return TEMPO_BY_CATEGORY[category] || '';
   }
 
-  return { EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS, defaultTempo, TEMPO_MAIN };
+
+  // ---- Light week (graded return after illness / fatigue) ----
+  // Plain-text prescriptions on purpose: no exercise ids, so nothing here can feed progression.
+  const LIGHT_RULES = [
+    'Effort 3–5 out of 10. You should be able to speak full sentences the whole time.',
+    'Roughly half your usual volume and load; stop every set with 5+ reps in reserve.',
+    'No HIIT, no running, no jumps/throws/power work, no heavy or max lifting this week.',
+    'Symptoms above the neck only (stuffy nose, mild sore throat) = easy movement is fine. Fever, chest symptoms, body aches or heavy fatigue = rest today.',
+    'Sleep, fluids and food are part of the plan. Eat enough — this is not a week to cut.',
+    'Next morning: if resting heart rate is 10+ bpm above normal or fatigue is worse, repeat the previous day instead of moving on.'
+  ];
+  const LIGHT_STOP_SIGNS = 'Stop and rest if you feel chest pain or pressure, a racing/irregular heartbeat, dizziness or unusual breathlessness. Get checked by a doctor if these happen at rest or persist.';
+  const LIGHT_STRENGTH_STEPS = [
+    'Leg press or goblet squat — 2 × 8–10',
+    'Dumbbell or machine chest press — 2 × 8–10',
+    'Seated cable row or chest-supported row — 2 × 8–10',
+    'Romanian deadlift (light DBs) or hip bridge — 2 × 8–10',
+    'Plank or dead bug — 2 × 20–30 s / 6 reps per side'
+  ];
+  const LIGHT_PLAN = [
+    { title: 'Easy walk + breathe', kind: 'aerobic', minutes: '15–20', steps: ['Easy walk outside or on the treadmill, 15–20 min', '5 min gentle mobility and slow nasal breathing'], note: 'Re-introduce movement. Finish feeling better than you started.' },
+    { title: 'Easy walk or bike', kind: 'aerobic', minutes: '20–30', steps: ['Walk or easy bike, 20–30 min at a conversational pace', 'Mobility flow, 10 min'], note: 'Still Zone 1. Do not chase pace or heart rate.' },
+    { title: 'Light full-body strength A', kind: 'strength', minutes: '~30', steps: LIGHT_STRENGTH_STEPS, note: '~50% of your usual working weight, smooth tempo, long rests. Leave 5+ reps in the tank.' },
+    { title: 'Easy aerobic', kind: 'aerobic', minutes: '25–35', steps: ['Zone 1 bike, walk or incline walk, 25–35 min', 'Mobility, 5–10 min'], note: 'Conversational the entire time.' },
+    { title: 'Light full-body strength B', kind: 'strength', minutes: '~30', steps: LIGHT_STRENGTH_STEPS, note: 'Same rules as strength A. Same weights or slightly lighter if you feel flat.' },
+    { title: 'Easy aerobic + optional flow', kind: 'aerobic', minutes: '30–40', steps: ['Zone 1 bike, walk or incline walk, 30–40 min', 'Optional: GMB-style flow, 10 min'], note: 'The longest session of the week, still easy.' },
+    { title: 'Rest or gentle walk', kind: 'rest', minutes: '0–20', steps: ['Full rest or a relaxed walk', 'Check in: do you feel close to normal?'], note: 'If you feel normal, the regular plan resumes after this. If not, repeat a light week or report illness.' }
+  ];
+
+  return { LIGHT_PLAN, LIGHT_RULES, LIGHT_STOP_SIGNS, EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS, defaultTempo, TEMPO_MAIN };
 })();

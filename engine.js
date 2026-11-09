@@ -31,6 +31,15 @@ LTA.engine = (function () {
     w.days.forEach((d) => { if (d.dayType !== 'rest') { d.status = 'sick'; d.wasDeload = !!w.isDeload; } });
   }
 
+  // Light week: planned, non-rest days inside the window become 'light' (excused, not skipped).
+  function applyLightToWeek(w) {
+    const lw = S().lightWeek;
+    if (!lw || !lw.active || !w) return;
+    w.days.forEach((d) => {
+      if (d.dayType !== 'rest' && d.status === 'planned' && d.date >= lw.startDate && d.date <= lw.endDate) d.status = 'light';
+    });
+  }
+
   // The 4 gym/strength sessions the deload cadence cares about (excludes run/z2/racket/custom).
   const GYM_DAY_TYPES = ['upperA', 'upperB', 'lowerA', 'lowerB'];
   function completedGymDays(week) {
@@ -44,12 +53,14 @@ LTA.engine = (function () {
     if (!s.currentWeek) {
       s.currentWeek = generateWeekPlan(monday, s.weekCounter % 5 === 0);
       if (s.illness && s.illness.active) applyIllnessToWeek(s.currentWeek);
+      applyLightToWeek(s.currentWeek);
       LTA.store.save();
       return;
     }
     let changed = false;
     while (s.currentWeek.weekStart < monday) {
       const sick = !!(s.illness && s.illness.active);
+      applyLightToWeek(s.currentWeek);
       // Mark unfinished planned days of the closing week as skipped — or, while unwell, as sick
       // (excused, not lost) so a program pause doesn't just silently eat the days.
       s.currentWeek.days.forEach((d) => {
@@ -62,16 +73,20 @@ LTA.engine = (function () {
       // Deload/phase cadence pauses while unwell, and now also while under-trained: a week
       // needs at least 3 of its 4 gym sessions done to count toward the 5-week cycle.
       const gymDone = completedGymDays(closing);
-      const metCadence = !sick && gymDone >= 3;
+      const hadLight = closing.days.some((d) => d.status === 'light');
+      const metCadence = !sick && !hadLight && gymDone >= 3;
       closing.countedTowardCadence = metCadence;
       if (metCadence) {
         s.weekCounter++;
+      } else if (hadLight) {
+        decide('Light week — this week does not count toward the deload cycle.');
       } else if (!sick) {
         decide('Only ' + gymDone + '/4 gym sessions completed this week — does not count toward the deload cycle.');
       }
       const nextStart = U.addDays(closing.weekStart, 7);
       s.currentWeek = generateWeekPlan(nextStart, s.weekCounter % 5 === 0);
       if (sick) applyIllnessToWeek(s.currentWeek);
+      applyLightToWeek(s.currentWeek);
       // Block periodisation: coming off a deload, alternate Build ↔ Strength emphasis.
       if (closing.isDeload && !s.currentWeek.isDeload) {
         s.phase = s.phase === 'strength' ? 'build' : 'strength';
@@ -81,7 +96,81 @@ LTA.engine = (function () {
       }
       changed = true;
     }
+    // Light week expires once its last day has passed.
+    const lw = s.lightWeek;
+    if (lw && lw.active && U.todayStr() > lw.endDate) {
+      s.lightHistory = (s.lightHistory || []).concat([{ startDate: lw.startDate, endDate: lw.endDate, endedAt: U.todayStr() }]);
+      s.lightWeek = { active: false, startDate: null, endDate: null, checkIns: {}, done: {} };
+      changed = true;
+    }
     if (changed) LTA.store.save();
+  }
+
+  // ---------- Light week ----------
+
+  function startLightWeek() {
+    const s = S();
+    if (s.lightWeek && s.lightWeek.active) return false;
+    const today = U.todayStr();
+    if (s.illness && s.illness.active) {
+      // Easing back in replaces the plain illness resume: no catch-up carry-over.
+      s.illness = { active: false, startDate: null, reportedAt: null };
+      decide('Ended the illness pause to ease back in with a light week (no missed sessions carried over).');
+    }
+    s.lightWeek = { active: true, startDate: today, endDate: U.addDays(today, 6), checkIns: {}, done: {} };
+    applyLightToWeek(s.currentWeek);
+    decide('Light week started — the regular plan is on hold and this week does not count toward the deload cycle.');
+    LTA.store.save(true);
+    return true;
+  }
+
+  function endLightWeek() {
+    const s = S();
+    const lw = s.lightWeek;
+    if (!lw || !lw.active) return;
+    const today = U.todayStr();
+    const weeks = (s.weekHistory || []).concat(s.currentWeek ? [s.currentWeek] : []);
+    // Give back today and later days, unless a light session was already logged today.
+    weeks.forEach((w) => w.days.forEach((d) => {
+      if (d.status === 'light' && d.date >= today && !(d.date === today && lw.done[today])) d.status = 'planned';
+    }));
+    s.lightHistory = (s.lightHistory || []).concat([{ startDate: lw.startDate, endDate: lw.endDate, endedAt: today }]);
+    s.lightWeek = { active: false, startDate: null, endDate: null, checkIns: {}, done: {} };
+    decide('Light week ended early — back to the regular plan.');
+    LTA.store.save(true);
+  }
+
+  function lightDayIndex() {
+    const lw = S().lightWeek;
+    if (!lw || !lw.active) return -1;
+    return Math.min(6, Math.max(0, U.daysBetween(lw.startDate, U.todayStr())));
+  }
+
+  function setLightCheckIn(date, v) {
+    const lw = S().lightWeek;
+    if (!lw || !lw.active) return;
+    lw.checkIns[date] = v;
+    LTA.store.save(true);
+  }
+
+  // Light sessions are logged directly: no sets, so progression/run/shoulder state is never touched.
+  function logLightSession(data) {
+    const s = S();
+    const lw = s.lightWeek;
+    if (!lw || !lw.active) return null;
+    const idx = lightDayIndex();
+    const plan = D.LIGHT_PLAN[idx];
+    const sess = {
+      id: U.uid(), date: U.todayStr(), dayType: 'light', light: true, lightDay: idx + 1,
+      lightTitle: 'Light week · ' + plan.title, sets: [], painFlags: [],
+      feel: data.feel, symptoms: data.symptoms,
+    };
+    if (data.durationMin) sess.durationMin = data.durationMin;
+    if (data.notes) sess.notes = data.notes;
+    s.sessions.push(sess);
+    lw.done[sess.date] = sess.id;
+    LTA.store.save(true);
+    return sess;
   }
 
   // ---------- Illness pause ----------
@@ -726,12 +815,12 @@ LTA.engine = (function () {
     // Only prompt for the most recently finished week.
     if (U.daysBetween(last.weekStart, U.todayStr()) > 14) return null;
     // A fully-sick week has nothing meaningful to review.
-    if (!last.days.some((d) => d.dayType !== 'rest' && d.status !== 'sick')) return null;
+    if (!last.days.some((d) => d.dayType !== 'rest' && d.status !== 'sick' && d.status !== 'light')) return null;
     return last;
   }
 
   function adherenceOf(week) {
-    const planned = week.days.filter((d) => (d.dayType !== 'rest' && d.status !== 'sick') || d.status === 'replaced');
+    const planned = week.days.filter((d) => (d.dayType !== 'rest' && d.status !== 'sick' && d.status !== 'light') || d.status === 'replaced');
     const done = planned.filter((d) => d.status === 'done' || d.status === 'replaced');
     return planned.length ? done.length / planned.length : 1;
   }
@@ -815,6 +904,7 @@ LTA.engine = (function () {
     ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness, completedGymDays,
+    startLightWeek, endLightWeek, lightDayIndex, setLightCheckIn, logLightSession,
   };
 })();
 
