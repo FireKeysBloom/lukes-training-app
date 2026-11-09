@@ -136,7 +136,9 @@ LTA.ui = (function () {
     const s = S();
     const w = s.currentWeek;
     let badges = '<span class="badge">Week ' + s.weekCounter + '</span>';
-    if (w && w.isDeload) badges += '<span class="badge deload">Deload</span>';
+    const lightOn = !!(s.lightWeek && s.lightWeek.active);
+    if (w && w.isDeload && !lightOn) badges += '<span class="badge deload">Deload</span>';
+    if (w && w.isDeload && lightOn) badges += '<span class="badge">Deload postponed</span>';
     if (w && w.kneeCaution) badges += '<span class="badge caution">Knee caution</span>';
     if (s.abdominalState && s.abdominalState.caution) badges += '<span class="badge caution">Abdominal caution' + (s.abdominalState.side ? ' (' + s.abdominalState.side + ')' : '') + '</span>';
     if (s.illness && s.illness.active) badges += '<span class="badge caution">Unwell</span>';
