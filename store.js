@@ -15,9 +15,11 @@
  *   illness: { active: bool, startDate, reportedAt },  // program pause while unwell — see LTA.engine.reportIllness
  *   lightWeek: { active, startDate, endDate, checkIns: {date: 'good'|'meh'|'rough'}, done: {date: sessionId} },  // light-week overlay — never touches weekCounter/progression
  *   lightHistory: [{startDate, endDate, endedAt}],
- *   abdominalState: { caution: bool, side: 'left'|'right'|'both'|null, since: date|null }  // gentler core/jump options while on
+ *   abdominalState: { caution: bool, side: 'left'|'right'|'both'|null, since: date|null },  // gentler core/jump options while on
+ *   popupState: { stageId, sessionsAtStage, highHipStreak }  // surf pop-up ladder, gated on front-of-hip pinch
  * }
- * WeekPlan = { weekStart, isDeload, kneeCaution: bool,
+ * settings.trainingMode: 'racket'|'surf' — sticky weekly focus new weeks inherit; settings.surfStance: 'regular'|'goofy'
+ * WeekPlan = { weekStart, isDeload, kneeCaution: bool, mode: 'racket'|'surf',
  *              days: [{date, dayType, status:'planned'|'done'|'skipped'|'replaced'|'sick'|'light', replacedBy?, wasDeload?}],
  *              decisions: string[] }
  */
@@ -27,7 +29,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 10;
+  const CURRENT_SCHEMA = 11;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -42,6 +44,8 @@ LTA.store = (function () {
         defaultRestSec: 90,
         plannedDaysPerWeek: 6,
         skeleton: LTA.data.WEEK_SKELETON.slice(),
+        trainingMode: 'racket',
+        surfStance: 'regular',
         supabaseUrl: '',
         supabaseKey: '',
       },
@@ -68,6 +72,7 @@ LTA.store = (function () {
       abdominalState: { caution: false, side: null, since: null },
       lightWeek: { active: false, startDate: null, endDate: null, checkIns: {}, done: {} },
       lightHistory: [],
+      popupState: { stageId: 0, sessionsAtStage: 0, highHipStreak: 0 },
     };
   }
 
@@ -82,6 +87,14 @@ LTA.store = (function () {
     7: function (s) { s.illness = { active: false, startDate: null, reportedAt: null }; },
     8: function (s) { s.abdominalState = s.abdominalState || { caution: false, side: null, since: null }; },
     9: function (s) { s.lightWeek = { active: false, startDate: null, endDate: null, checkIns: {}, done: {} }; s.lightHistory = []; },
+    10: function (s) {
+      s.settings = s.settings || {};
+      s.settings.trainingMode = s.settings.trainingMode || 'racket';
+      s.settings.surfStance = s.settings.surfStance || 'regular';
+      s.popupState = s.popupState || { stageId: 0, sessionsAtStage: 0, highHipStreak: 0 };
+      if (s.currentWeek && !s.currentWeek.mode) s.currentWeek.mode = 'racket';
+      (s.weekHistory || []).forEach((w) => { if (!w.mode) w.mode = 'racket'; });
+    },
   };
 
   function migrate(s) {

@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.11.09.11';
+  const APP_VERSION = '2026.11.15.12';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -136,6 +136,8 @@ LTA.ui = (function () {
     const s = S();
     const w = s.currentWeek;
     let badges = '<span class="badge">Week ' + s.weekCounter + '</span>';
+    const fm = D.MODES[E.weekMode()];
+    badges += '<span class="badge mode-badge">' + fm.emoji + ' ' + fm.label + ' focus</span>';
     const lightOn = !!(s.lightWeek && s.lightWeek.active);
     if (w && w.isDeload && !lightOn) badges += '<span class="badge deload">Deload</span>';
     if (w && w.isDeload && lightOn) badges += '<span class="badge">Deload postponed</span>';
@@ -186,7 +188,7 @@ LTA.ui = (function () {
       const tpl = D.DAYS[day.dayType];
       h += '<div class="card session-card">';
       if (day.status !== 'done') {
-        h += '<div class="session-kind">' + esc(tpl.name) + '</div>';
+        h += '<div class="session-kind">' + esc(E.dayName(day.dayType)) + '</div>';
         h += sessionSummaryHTML(day.dayType);
       }
       if (day.status === 'done') {
@@ -226,6 +228,11 @@ LTA.ui = (function () {
       return '<p><strong>' + esc(spec.stage.name) + ':</strong> ' + esc(spec.protocol) + '</p>' +
         '<p class="muted">Completions at this stage: ' + spec.completions + '/' + spec.required + '</p>';
     }
+    if (dayType === 'z2' && E.weekMode() === 'surf') {
+      const t = E.popupStageForToday();
+      return '<p>Paddle engine — swim, SkiErg or prone band intervals (~25–30 min) — then surf skills: hip prep flow + pop-up ladder.</p>' +
+        '<p class="muted">Pop-up stage ' + (t.stage.id + 1) + '/' + D.POPUP_STAGES.length + ': ' + esc(D.EXERCISES[t.stage.exerciseId].name) + '</p>';
+    }
     if (dayType === 'racket') return '<p>Log your play or surf session — sport, duration, intensity, and how the shoulder and knee handled it.</p>';
     if (dayType === 'rest') return '<p>GMB-style locomotion flow, a walk, or full rest. Recovery is training.</p>';
     if (dayType === 'custom') return '<p>Freestyle — build your own session exercise by exercise. Everything still counts toward progression.</p>';
@@ -262,9 +269,11 @@ LTA.ui = (function () {
     const surfed = sess.sport === 'Surf';
     if (sess.dayType === 'racket' && sess.servingIntensity !== undefined) bits.push((surfed ? 'paddling ' : 'serving ') + sess.servingIntensity + '%');
     if (sess.dayType === 'racket' && sess.movementIntensity !== undefined) bits.push((surfed ? 'standing/riding ' : 'movement ') + sess.movementIntensity + '%');
+    if (sess.popupRate !== undefined) bits.push('stood up on ~' + sess.popupRate + '% of waves');
+    else if (sess.popupsTried) bits.push('stood up ' + (sess.popupsMade || 0) + '/' + sess.popupsTried);
     skipSwapBits(sess).forEach((b) => bits.push(b));
     let h = '<div class="card session-card done-card">';
-    h += '<div class="session-kind">' + esc(tpl ? tpl.name : (sess.lightTitle || sess.dayType)) + '</div>';
+    h += '<div class="session-kind">' + esc(tpl ? E.dayName(sess.dayType, sess.mode || 'racket') : (sess.lightTitle || sess.dayType)) + '</div>';
     if (bits.length) h += '<p class="muted">' + esc(bits.join(' · ')) + '</p>';
     if (sess.notes) h += '<p>' + esc(sess.notes) + '</p>';
     if (sess.dayType === 'racket') h += '<button class="btn-mini pain" onclick="LTA.ui.openRacketFollowUp(\'' + sess.id + '\')">Pain later?</button>';
@@ -316,7 +325,7 @@ LTA.ui = (function () {
     const day = E.dayForDate(today);
     const dayType = day ? day.dayType : 'rest';
     session = {
-      id: U.uid(), date: today, dayType,
+      id: U.uid(), date: today, dayType, mode: E.weekMode(),
       items: flattenDay(dayType), idx: 0,
       sets: [], painFlags: [], pending: {},
       startedAt: Date.now(),
@@ -351,7 +360,7 @@ LTA.ui = (function () {
       if (others.length) {
         h += '<label>Pull a scheduled day forward (the days trade places)</label>';
         others.forEach((d) => {
-          h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'' + d.dayType + '\')">' + esc(D.DAYS[d.dayType].name) + ' <span class="muted">(' + U.weekdayName(d.date) + ')</span></button>';
+          h += '<button class="btn btn-ghost" onclick="LTA.ui.changeToday(\'' + d.dayType + '\')">' + esc(E.dayName(d.dayType)) + ' <span class="muted">(' + U.weekdayName(d.date) + ')</span></button>';
         });
       }
       h += '<label>Or</label>';
@@ -371,7 +380,7 @@ LTA.ui = (function () {
       // Extra session logged on top of an already-completed day — start it directly,
       // don't reschedule anything (today's slot and other days stay exactly as they are).
       session = {
-        id: U.uid(), date: today, dayType: type,
+        id: U.uid(), date: today, dayType: type, mode: E.weekMode(),
         items: type === 'racket' ? [] : flattenDay(type), idx: 0,
         sets: [], painFlags: [], pending: {}, startedAt: Date.now(), runDone: false,
       };
@@ -381,7 +390,7 @@ LTA.ui = (function () {
     }
     const decisions = LTA.engine.doDayInstead(today, type);
     if (type === 'racket') {
-      session = { id: U.uid(), date: today, dayType: 'racket', items: [], sets: [], painFlags: [], pending: {}, startedAt: Date.now() };
+      session = { id: U.uid(), date: today, dayType: 'racket', mode: E.weekMode(), items: [], sets: [], painFlags: [], pending: {}, startedAt: Date.now() };
     }
     render();
     if (decisions && decisions.length) toast(decisions.join(' '));
@@ -390,10 +399,12 @@ LTA.ui = (function () {
   function renderSessionPlayer(view) {
     const dayType = session.dayType;
     const tpl = D.DAYS[dayType];
-    if (!session.warmupDone && tpl.warmup && tpl.warmup.length) { renderWarmup(view, tpl); return; }
+    const warm = E.dayWarmup(dayType, session.mode);
+    if (!session.warmupDone && warm && warm.length) { renderWarmup(view, tpl); return; }
     if (dayType === 'run' && !session.runCompleted) { renderRunPlayer(view); return; }
     if (dayType === 'racket') { renderRacketPlayer(view); return; }
-    if (dayType === 'z2' || dayType === 'rest') { renderSimplePlayer(view); return; }
+    const surfEngine = dayType === 'z2' && session.mode === 'surf';
+    if ((dayType === 'z2' && !surfEngine) || dayType === 'rest' || (surfEngine && !session.condDone)) { renderSimplePlayer(view); return; }
 
     const items = session.items;
     if (!items.length) { renderEmptyFreestyle(view); return; }
@@ -431,6 +442,7 @@ LTA.ui = (function () {
     const tempo = tempoFor(it, ex);
     if (tempo) h += '<div class="tempo"><strong>⏱ Tempo ' + esc(tempo) + '</strong><span>' + esc(tempoGloss(tempo)) + '</span></div>';
     if (it.swappedFrom && D.EXERCISES[it.swappedFrom]) h += '<p class="muted">Standing swap — replaced ' + esc(D.EXERCISES[it.swappedFrom].name) + '.</p>';
+    if (it.popupLadder) h += popupLadderHeaderHTML();
     if (it.notes) h += '<p class="muted">' + esc(it.notes) + '</p>';
     if (it.phaseNote) h += '<p class="muted">🏋️ ' + esc(it.phaseNote) + ' — heavier, lower reps this block.</p>';
     h += '<ul class="cues">' + ex.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
@@ -480,8 +492,8 @@ LTA.ui = (function () {
     h += '<div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
       '<div class="player-progress">Warmup</div><span></span></div>';
     h += '<h2 class="ex-name">Warm up first</h2>';
-    h += '<p class="muted">Tailored for ' + esc(tpl.name) + ' — or run your own 15-min routine, both count.</p>';
-    h += '<ul class="cues">' + tpl.warmup.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
+    h += '<p class="muted">Tailored for ' + esc(E.dayName(session.dayType)) + ' — or run your own 15-min routine, both count.</p>';
+    h += '<ul class="cues">' + E.dayWarmup(session.dayType).map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>';
     const myNote = S().warmupNotes[tpl.id];
     if (myNote) h += '<div class="my-note">📝 ' + esc(myNote) + '</div>';
     h += '<button class="btn-link note-link" onclick="LTA.ui.openWarmupNoteModal(\'' + tpl.id + '\')">' + (myNote ? '✎ Edit my note' : '✎ Note to self') + '</button>';
@@ -492,7 +504,7 @@ LTA.ui = (function () {
 
   function openWarmupNoteModal(dayType) {
     const note = S().warmupNotes[dayType] || '';
-    const h = '<h3>Warmup note — ' + esc(D.DAYS[dayType].name) + '</h3>' +
+    const h = '<h3>Warmup note — ' + esc(E.dayName(dayType)) + '</h3>' +
       '<textarea id="warmupNoteText" rows="4" placeholder="Anything you want reminding of before this one — an extra drill, how long to spend on it…">' + esc(note) + '</textarea>' +
       '<button class="btn btn-primary btn-big" onclick="LTA.ui.saveWarmupNote(\'' + dayType + '\')">Save note</button>';
     modal(h, true);
@@ -1478,7 +1490,7 @@ LTA.ui = (function () {
   function racketAreasForSession(sess) {
     const areas = [{ key: 'shoulder', label: 'Shoulder' }, { key: 'knee', label: 'Knee' }];
     const seen = { shoulder: 1, knee: 1 };
-    if (sess && sess.sport === 'Surf') { areas.push({ key: 'abdominal', label: 'Lower abdominal' }); seen.abdominal = 1; }
+    if (sess && sess.sport === 'Surf') { areas.push({ key: 'abdominal', label: 'Lower abdominal' }); seen.abdominal = 1; areas.push({ key: 'hip', label: 'Front of hip' }); seen.hip = 1; }
     (S().racketExtraAreas || []).forEach((a) => { if (!seen[a.key]) { areas.push(a); seen[a.key] = 1; } });
     ((sess && sess.painFlags) || []).forEach((f) => { if (!seen[f.area]) { areas.push({ key: f.area, label: f.label || f.area }); seen[f.area] = 1; } });
     return areas;
@@ -1532,6 +1544,34 @@ LTA.ui = (function () {
     set('racketTitle', surf ? 'Surf' : 'Racket / Surf');
     const abd = $('abdCard');
     if (abd) abd.hidden = !surf;
+    const sc = $('surfSkillCard');
+    if (sc) sc.hidden = !surf;
+    // Surf: shoulder and knee aren't expected trouble, so they sit behind "+ add" buttons
+    // unless already opened this session. Racket sports always show them.
+    ['shoulder', 'knee'].forEach((a) => {
+      const card = $(a + 'Card'), add = $('add' + a + 'Btn');
+      const open = !surf || !!(session && session.surfOpened && session.surfOpened[a]);
+      if (card) card.hidden = !open;
+      if (add) add.hidden = open;
+    });
+    const row = $('surfAddRow');
+    if (row) row.hidden = !surf || (session && session.surfOpened && session.surfOpened.shoulder && session.surfOpened.knee);
+  }
+
+  // Reveal a collapsed shoulder/knee card on a surf log, placed where the button was.
+  function surfAddArea(area) {
+    session.surfOpened = session.surfOpened || {};
+    session.surfOpened[area] = true;
+    const card = $(area + 'Card'), row = $('surfAddRow');
+    if (card && row) { row.insertAdjacentElement('afterend', card); card.hidden = false; }
+    const add = $('add' + area + 'Btn');
+    if (add) add.hidden = true;
+    if (row && session.surfOpened.shoulder && session.surfOpened.knee) row.hidden = true;
+  }
+
+  function popNoneToggle(cb) {
+    const w = $('popRateWrap');
+    if (w) w.hidden = cb.checked;
   }
 
   function renderRacketPlayer(view) {
@@ -1545,13 +1585,13 @@ LTA.ui = (function () {
     h += '<label>Duration (minutes)</label>' + stepperHTML('duration', 60, 15, 'min');
     h += '<label>Intensity</label><div class="seg" id="seg-intensity">' + segHTML(['Casual', 'Moderate', 'Competitive'], 1) + '</div>';
 
-    h += '<div class="card"><div class="card-title">Shoulder</div>' +
+    h += '<div class="card" id="shoulderCard"><div class="card-title">Shoulder</div>' +
       '<label id="lblServing">' + RACKET_LABELS.serving + '</label>' + intensitySliderHTML('servingIntensity', 70) +
       '<label>Shoulder pain during the session, if any (0–10)</label>' + painSliderHTML('racketShoulder', 0) +
       '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('racketShoulderWhen', DURING_KEYS) +
       '</div>';
 
-    h += '<div class="card"><div class="card-title">Knee</div>' +
+    h += '<div class="card" id="kneeCard"><div class="card-title">Knee</div>' +
       '<label id="lblMovement">' + RACKET_LABELS.movement + '</label>' + intensitySliderHTML('movementIntensity', 70) +
       '<label>Knee pain during the session, if any (0–10)</label>' + painSliderHTML('racketKnee', 0) +
       '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('racketKneeWhen', DURING_KEYS) +
@@ -1564,6 +1604,16 @@ LTA.ui = (function () {
       '<p class="muted">When did it hurt?</p>' + durationChecklistHTML('racketAbdWhen', DURING_KEYS) +
       '</div>';
 
+    // Surf-only: the in-water skill layer. Logged for the trend; it never moves the dry-land ladder.
+    h += '<div class="card" id="surfSkillCard" hidden><div class="card-title">Pop-ups</div>' +
+      '<div id="popRateWrap"><label>Of the waves you went for, roughly what share did you get to your feet on?</label>' + intensitySliderHTML('popRate', 50) + '</div>' +
+      '<label class="check"><input type="checkbox" id="popNone" onchange="LTA.ui.popNoneToggle(this)"> Didn’t go for any waves this time</label>' +
+      '<label>Front-of-hip pinch while popping up (0–10)</label>' + painSliderHTML('surfHip', 0) +
+      '</div>';
+    h += '<div class="seg-row" id="surfAddRow" hidden>' +
+      '<button class="btn-mini" id="addshoulderBtn" onclick="LTA.ui.surfAddArea(\'shoulder\')">+ Shoulder</button> ' +
+      '<button class="btn-mini" id="addkneeBtn" onclick="LTA.ui.surfAddArea(\'knee\')">+ Knee</button></div>';
+
     (s.racketExtraAreas || []).forEach((a) => { h += templateAreaCardHTML(a); });
     (session.extraPainAreas || []).forEach((e) => { h += adhocAreaCardHTML(e); });
 
@@ -1575,6 +1625,11 @@ LTA.ui = (function () {
     session.idx = 0;
     session.pending.__racket = { duration: 60 };
     session.extraPainAreas = session.extraPainAreas || [];
+    // Surf-focus week: Surf is the likely sport, so start there.
+    if (E.weekMode() === 'surf') {
+      const surfBtn = Array.from(document.querySelectorAll('#seg-sport .seg-btn')).find((b) => b.textContent === 'Surf');
+      if (surfBtn) sportPick(surfBtn);
+    }
   }
 
   function openAddPainArea() {
@@ -1644,10 +1699,12 @@ LTA.ui = (function () {
   function finishRacket() {
     const s = S();
     const dur = Number(($('step-duration') || {}).textContent || 60);
-    const servingIntensity = Number(($('slider-servingIntensity') || {}).value || 0);
-    const movementIntensity = Number(($('slider-movementIntensity') || {}).value || 0);
-    const sh = Number(($('slider-racketShoulder') || {}).value || 0);
-    const kn = Number(($('slider-racketKnee') || {}).value || 0);
+    // A collapsed (unopened) shoulder/knee card on a surf log records nothing.
+    const shOpen = !($('shoulderCard') || {}).hidden, knOpen = !($('kneeCard') || {}).hidden;
+    const servingIntensity = shOpen ? Number(($('slider-servingIntensity') || {}).value || 0) : undefined;
+    const movementIntensity = knOpen ? Number(($('slider-movementIntensity') || {}).value || 0) : undefined;
+    const sh = shOpen ? Number(($('slider-racketShoulder') || {}).value || 0) : 0;
+    const kn = knOpen ? Number(($('slider-racketKnee') || {}).value || 0) : 0;
     const shDur = readDurationChecklist('racketShoulderWhen');
     const knDur = readDurationChecklist('racketKneeWhen');
     const seg = document.querySelector('#seg-intensity .seg-btn.active');
@@ -1656,6 +1713,13 @@ LTA.ui = (function () {
     const sport = (sportSeg && sportSeg.textContent === 'Other' && sportOtherVal) ? sportOtherVal : (sportSeg ? sportSeg.textContent : 'Tennis');
     if (sh > 0) session.painFlags.push({ area: 'shoulder', label: 'Shoulder', severity: sh, when: 'during', date: session.date, context: 'racket', intensity: servingIntensity, durations: shDur });
     if (kn > 0) session.painFlags.push({ area: 'knee', label: 'Knee', severity: kn, when: 'during', date: session.date, context: 'racket', intensity: movementIntensity, durations: knDur });
+    if (sport === 'Surf') {
+      const none = ($('popNone') || {}).checked;
+      if (!none) session.popupRate = Number(($('slider-popRate') || {}).value || 0);
+      if (!shOpen) session.shoulderNotAsked = true;
+      const hip = Number(($('slider-surfHip') || {}).value || 0);
+      if (hip > 0) session.painFlags.push({ area: 'hip', label: 'Front of hip', severity: hip, when: 'during', date: session.date, context: 'racket' });
+    }
     const ab = sport === 'Surf' ? Number(($('slider-racketAbd') || {}).value || 0) : 0;
     if (ab > 0) {
       const abFlag = { area: 'abdominal', label: 'Lower abdominal', severity: ab, when: 'during', date: session.date, context: 'racket', durations: readDurationChecklist('racketAbdWhen') };
@@ -1676,8 +1740,8 @@ LTA.ui = (function () {
     });
 
     session.durationMin = dur;
-    session.servingIntensity = servingIntensity;
-    session.movementIntensity = movementIntensity;
+    if (servingIntensity !== undefined) session.servingIntensity = servingIntensity;
+    if (movementIntensity !== undefined) session.movementIntensity = movementIntensity;
     session.sport = sport;
     session.notes = sport + ' · Intensity: ' + (seg ? seg.textContent : 'Moderate');
     session.feel = 4;
@@ -1690,7 +1754,9 @@ LTA.ui = (function () {
     let h = '<div class="player"><div class="player-top"><button class="btn-mini" onclick="LTA.ui.abandonSession()">✕</button>' +
       '<div class="player-progress">' + (isZ2 ? 'Engine day' : 'Recovery day') + '</div>' +
       '<button class="btn-mini pain" onclick="LTA.ui.openPainModal()">Pain?</button></div>';
-    if (isZ2) {
+    if (isZ2 && session.mode === 'surf') {
+      h += surfEngineHTML();
+    } else if (isZ2) {
       const caution = s.currentWeek && s.currentWeek.kneeCaution;
       const mode = session.condMode || 'did';
       h += '<h2 class="ex-name">Build the engine</h2>';
@@ -1722,7 +1788,7 @@ LTA.ui = (function () {
       h += '<div class="card"><div class="card-title">Optional mobility · 15 min</div><ul class="cues">' +
         D.EXERCISES.mobility_flow.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul></div>';
     }
-    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.finishSimple()">Mark done</button></div>';
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.finishSimple()">' + (isZ2 && session.mode === 'surf' ? 'Continue to surf skills ›' : 'Mark done') + '</button></div>';
     view.innerHTML = h;
     session.pending.__t = { duration: isZ2 ? 30 : 15 };
     // The stepper plumbing (step/editStep) reads the current item's pending state.
@@ -1743,6 +1809,7 @@ LTA.ui = (function () {
   function finishSimple() {
     const mode = session.dayType === 'z2' ? (session.condMode || 'did') : 'did';
     const durEl = $('step-duration');
+    if (session.dayType === 'z2' && session.mode === 'surf') { finishPaddle(mode, durEl ? Number(durEl.textContent) : 0); return; }
     if (durEl && mode === 'did') session.durationMin = Number(durEl.textContent);
     if (mode === 'did') {
       const sp = $('didSprints');
@@ -1767,6 +1834,81 @@ LTA.ui = (function () {
     else openRecoveryFinishModal();
   }
 
+  // ---------- Surf: paddle engine + pop-up ladder ----------
+
+  function surfEngineHTML() {
+    const s = S();
+    const mode = session.condMode || 'did';
+    const pick = session.paddlePick || (s.shoulderState.rungId >= 2 ? 'swim_intervals' : 'skierg_intervals');
+    let h = '<h2 class="ex-name">Paddle engine</h2>';
+    h += '<label>Conditioning</label><div class="seg" id="seg-cond">' +
+      [['did', 'Did it'], ['swapped', 'Swapped'], ['skipped', 'Skipped']].map((m) =>
+        '<button class="seg-btn' + (mode === m[0] ? ' active' : '') + '" onclick="LTA.ui.condPick(\'' + m[0] + '\')">' + m[1] + '</button>').join('') + '</div>';
+    h += '<div id="cond-did"' + (mode === 'did' ? '' : ' hidden') + '>';
+    h += '<p class="muted">Pick one, ~25–30 min. Paddling loads the right shoulder — flag it with Pain? if it passes 2/10.</p>';
+    D.PADDLE_OPTIONS.forEach((id) => {
+      const e = D.EXERCISES[id];
+      h += '<div class="card"><label class="check"><input type="radio" name="paddlePick" value="' + id + '"' + (id === pick ? ' checked' : '') + ' onchange="LTA.ui.paddlePick(this.value)"> ' + esc(e.name) + '</label>' +
+        '<ul class="cues">' + e.cues.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>' +
+        (e.video ? '<a class="video-link" href="' + esc(e.video) + '" target="_blank" rel="noopener">▶ Technique</a>' : '') + '</div>';
+    });
+    h += '<label>Minutes</label>' + stepperHTML('duration', 30, 5, 'min');
+    const sprint = E.sprintSpec();
+    if (sprint) {
+      h += '<div class="card"><div class="card-title">⚡ Sprint work (unlocked)</div><p>' + esc(sprint.stage.name) + ': ' + esc(sprint.stage.protocol) + '</p>' +
+        '<label class="check"><input type="checkbox" id="didSprints"> I did the sprints</label></div>';
+    }
+    h += '</div>';
+    h += '<div id="cond-swapped"' + (mode === 'swapped' ? '' : ' hidden') + '><p class="muted">Logged as a swap — no shoulder paddle check, and it won’t count toward the sprint or run progressions.</p>' +
+      cardioSwapFormHTML('cond') + '</div>';
+    h += '<div id="cond-skipped"' + (mode === 'skipped' ? '' : ' hidden') + '><p class="muted">Paddle work skipped — surf skills are still next.</p></div>';
+    h += '<div class="card"><div class="card-title">Next: surf skills & hips</div><p class="muted">Hip prep flow, then the pop-up ladder.</p></div>';
+    return h;
+  }
+
+  function paddlePick(v) { session.paddlePick = v; saveDraft(); }
+
+  function finishPaddle(mode, minutes) {
+    if (mode === 'did') {
+      const r = document.querySelector('input[name="paddlePick"]:checked');
+      const id = r ? r.value : 'skierg_intervals';
+      session.sets.push({ exerciseId: id, weight: 0, reps: minutes || 30 });
+      session.paddleMin = minutes || 30;
+      const sp = $('didSprints');
+      if (sp && sp.checked) session.didSprints = true;
+    } else {
+      session.conditioningMode = mode;
+      delete session.didSprints;
+      if (mode === 'swapped') {
+        session.cardioSwap = readCardioSwap('cond');
+        if (session.cardioSwap.minutes) session.paddleMin = session.cardioSwap.minutes;
+      } else {
+        delete session.cardioSwap;
+      }
+    }
+    // Hand over to the set player for the surf-skills block (same pattern as run → core).
+    session.condDone = true;
+    session.items = flattenDay('z2');
+    session.idx = 0;
+    session.pending = {};
+    saveDraft();
+    render();
+  }
+
+  function popupLadderHeaderHTML() {
+    const t = E.popupStageForToday();
+    const stance = S().settings.surfStance === 'goofy' ? 'Goofy stance — right foot lands forward (swap “left” for “right” in the cues).' : 'Regular stance — left foot lands forward.';
+    return '<div class="calib-card"><strong>🏄 Pop-up ladder · stage ' + (t.stage.id + 1) + ' of ' + D.POPUP_STAGES.length + '</strong>' +
+      (t.capped ? '<p class="muted">Held at a step-through while the lower-abdominal caution is on.</p>'
+        : '<p class="muted">' + t.sessions + '/' + (t.required >= 999 ? '∞' : t.required) + ' pinch-free sessions at this stage (hip ≤2/10 advances). You’ll rate the hip pinch when you finish.</p>') +
+      '<p class="muted">' + esc(stance) + '</p></div>';
+  }
+
+  function sessionHasPopup() {
+    const ids = D.POPUP_STAGES.map((st) => st.exerciseId);
+    return session.sets.some((x) => ids.includes(x.exerciseId));
+  }
+
   // ---------- Pain modal ----------
 
   function painSliderHTML(id, val) {
@@ -1776,7 +1918,7 @@ LTA.ui = (function () {
   }
 
   function openPainModal() {
-    const areas = [['knee', 'Knee'], ['shoulder', 'Shoulder'], ['abdominal', 'Lower abdominal'], ['other', 'Other']];
+    const areas = [['knee', 'Knee'], ['shoulder', 'Shoulder'], ['abdominal', 'Lower abdominal'], ['hip', 'Front of hip'], ['other', 'Other']];
     let h = '<h3>Flag pain</h3><label>Where?</label><div class="seg seg-wrap" id="seg-painarea">' +
       areas.map((a, i) => '<button class="seg-btn' + (i === 0 ? ' active' : '') + '" data-area="' + a[0] + '" onclick="LTA.ui.painAreaPick(this)">' + a[1] + '</button>').join('') + '</div>' +
       '<div id="painSideWrap" hidden><label>Which side?</label>' + sideSegHTML('painSide') + '</div>' +
@@ -1788,7 +1930,7 @@ LTA.ui = (function () {
   function painAreaPick(btn) {
     segPick(btn);
     const wrap = $('painSideWrap');
-    if (wrap) wrap.hidden = btn.dataset.area !== 'abdominal';
+    if (wrap) wrap.hidden = btn.dataset.area !== 'abdominal' && btn.dataset.area !== 'hip';
   }
 
   function savePainFlag() {
@@ -1798,6 +1940,12 @@ LTA.ui = (function () {
     const flag = { area, severity: sev, when: 'during', date: session.date };
     if (area === 'abdominal') {
       flag.label = 'Lower abdominal';
+      flag.context = session.dayType;
+      const side = readSide('painSide');
+      if (side) flag.side = side;
+    }
+    if (area === 'hip') {
+      flag.label = 'Front of hip';
       flag.context = session.dayType;
       const side = readSide('painSide');
       if (side) flag.side = side;
@@ -1840,6 +1988,9 @@ LTA.ui = (function () {
       '<p class="muted">' + session.sets.length + ' sets logged · ' + Math.round((Date.now() - session.startedAt) / 60000) + ' min</p>' +
       '<label>How did it feel?</label>' + feelButtonsHTML() +
       '<label>Session effort (RPE 1–10)</label>' + painSliderHTML('srpe', 7) +
+      (sessionHasPopup() ? '<label>Front-of-hip pinch during the pop-ups (0–10)</label>' +
+        painSliderHTML('popupHip', session.painFlags.filter((f) => f.area === 'hip').reduce((m, f) => Math.max(m, f.severity), 0)) +
+        '<p class="muted">≤2 counts toward the next pop-up stage, 3–4 repeats it, 5+ steps back.</p>' : '') +
       '<label>Notes</label><textarea id="sessionNotes" rows="2" placeholder="optional"></textarea>' +
       '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmFinish()">Save session</button>';
     modal(h, true);
@@ -1848,6 +1999,7 @@ LTA.ui = (function () {
   function confirmFinish() {
     session.feel = selectedFeel;
     session.sessionRPE = Number(($('slider-srpe') || {}).value || 7);
+    if ($('slider-popupHip')) session.popupHip = Number($('slider-popupHip').value || 0);
     const notes = $('sessionNotes');
     if (notes && notes.value) session.notes = notes.value;
     closeModal();
@@ -1935,6 +2087,10 @@ LTA.ui = (function () {
     const w = s.currentWeek;
     const today = U.todayStr();
     let h = '<div class="pagehead"><h2>This Week</h2><div>' + topInfo() + '</div></div>';
+    h += '<label>This week’s focus</label>' + modeSegHTML('weekModeSeg', E.weekMode(), 'LTA.ui.setMode(this)');
+    h += '<p class="muted">' + (E.weekMode() === 'surf'
+      ? 'Pop-up ladder, paddle endurance and rotational power replace jumps, grip and the adductor machine. Engine day = paddle + surf skills. Strength, run and rehab work carry on as normal.'
+      : 'Jumps, grip and court movement. Switch to Surf any time — only days not yet done change, and it sticks for the following weeks.') + '</p>';
     h += '<div class="week-list">';
     w.days.forEach((d, i) => {
       const tpl = D.DAYS[d.dayType];
@@ -1942,14 +2098,14 @@ LTA.ui = (function () {
       const daySessions = E.sessionsForDate(d.date);
       const chip = daySessions.length > 1 ? '✅×' + daySessions.length :
         d.status === 'done' ? '✅' : d.status === 'replaced' ? '🎾' : d.status === 'sick' ? '🤒' : d.status === 'light' ? '🍃' : d.status === 'skipped' ? '⏭' : (tpl.kind === 'rest' ? '🌙' : '·');
-      const name = daySessions.length > 1 ? daySessions.map((sess) => (D.DAYS[sess.dayType] || {}).name || sess.dayType).join(' + ') : tpl.name;
+      const name = daySessions.length > 1 ? daySessions.map((sess) => D.DAYS[sess.dayType] ? E.dayName(sess.dayType, sess.mode || 'racket') : (sess.lightTitle || sess.dayType)).join(' + ') : E.dayName(d.dayType);
       h += '<div class="week-day' + (isToday ? ' today' : '') + '" onclick="LTA.ui.dayActions(' + i + ')">' +
         '<div class="wd-date">' + U.weekdayName(d.date) + '<span>' + d.date.slice(8) + '</span></div>' +
         '<div class="wd-name">' + esc(name) + (d.optional ? ' <span class="badge">optional</span>' : '') + '</div>' +
         '<div class="wd-chip">' + chip + '</div></div>';
     });
     h += '</div>';
-    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openRacketModal()">🎾 Racket / 🏄 Surf session — played or planning to</button>';
+    h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openRacketModal()">' + (E.weekMode() === 'surf' ? '🏄 Surf / 🎾 Racket' : '🎾 Racket / 🏄 Surf') + ' session — played or planning to</button>';
     if (w.decisions.length) {
       h += '<div class="card"><div class="card-title">Adjustments & why</div><ul class="decisions">' +
         w.decisions.map((d) => '<li>' + esc(d) + '</li>').join('') + '</ul></div>';
@@ -1957,14 +2113,27 @@ LTA.ui = (function () {
     view.innerHTML = h;
   }
 
+  function modeSegHTML(id, current, onclick) {
+    return '<div class="seg" id="' + id + '">' + ['racket', 'surf'].map((m) =>
+      '<button class="seg-btn' + (m === current ? ' active' : '') + '" data-mode="' + m + '" onclick="' + onclick + '">' + D.MODES[m].emoji + ' ' + D.MODES[m].label + '</button>').join('') + '</div>';
+  }
+
+  function setMode(btn) {
+    const m = btn.dataset.mode;
+    if (m === E.weekMode()) return;
+    E.setWeekMode(m);
+    render();
+    toast(m === 'surf' ? '🏄 Surf focus on for this week and the weeks after.' : '🎾 Racket focus on for this week and the weeks after.');
+  }
+
   function dayActions(i) {
     const w = S().currentWeek;
     const d = w.days[i];
     const tpl = D.DAYS[d.dayType];
     const daySessions = E.sessionsForDate(d.date);
-    let h = '<h3>' + U.niceDate(d.date) + '</h3><p>' + esc(tpl.name) + ' — ' + d.status + '</p>';
+    let h = '<h3>' + U.niceDate(d.date) + '</h3><p>' + esc(E.dayName(d.dayType)) + ' — ' + d.status + '</p>';
     if (d.status === 'planned' || d.status === 'skipped') {
-      h += '<div class="card session-card"><div class="session-kind">' + esc(tpl.name) + '</div>' + sessionSummaryHTML(d.dayType) + '</div>';
+      h += '<div class="card session-card"><div class="session-kind">' + esc(E.dayName(d.dayType)) + '</div>' + sessionSummaryHTML(d.dayType) + '</div>';
     }
     if (daySessions.length) {
       h += '<div class="card-title">' + daySessions.length + ' session' + (daySessions.length > 1 ? 's' : '') + ' logged</div>';
@@ -1973,7 +2142,7 @@ LTA.ui = (function () {
     h += '<button class="btn btn-primary btn-big" onclick="LTA.ui.openQuickLogModal(' + i + ')">📝 Log a session on this day</button>';
     if (d.status === 'planned') {
       h += '<label>Change this day to:</label><select id="daySwapSel" class="input">' +
-        Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(D.DAYS[k].name) + '</option>').join('') + '</select>' +
+        Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(E.dayName(k)) + '</option>').join('') + '</select>' +
         '<button class="btn btn-primary btn-big" onclick="LTA.ui.applyDaySwap(' + i + ')">Save</button>';
       h += '<button class="btn btn-ghost btn-big" onclick="LTA.ui.markSkipped(' + i + ')">Mark skipped</button>';
     } else if (d.status === 'skipped') {
@@ -2001,7 +2170,7 @@ LTA.ui = (function () {
     selectedFeel = 4;
     let h = '<h3>Log a session — ' + U.niceDate(d.date) + '</h3>' +
       '<label>What did you do?</label><select id="qlType" class="input">' +
-      Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(D.DAYS[k].name) + '</option>').join('') + '</select>' +
+      Object.keys(D.DAYS).map((k) => '<option value="' + k + '"' + (k === d.dayType ? ' selected' : '') + '>' + esc(E.dayName(k)) + '</option>').join('') + '</select>' +
       '<p class="muted">Everything below is optional — save now, or add details.</p>' +
       '<label>Duration (minutes)</label><input type="number" id="qlDuration" class="input" placeholder="optional" min="0" step="5">' +
       '<label>How did it feel?</label>' + feelButtonsHTML() +
@@ -2179,6 +2348,7 @@ LTA.ui = (function () {
         revSlider('shoulderMaxPain', 'Worst shoulder pain this week (0–10)', 0, 0, 10) +
         revSlider('abdominalMaxPain', 'Worst lower abdominal pain this week (0–10)', 0, 0, 10) +
         '<p class="muted">Which side? (if any)</p>' + sideSegHTML('revAbdSide') +
+        '<label>Focus this week</label>' + modeSegHTML('revModeSeg', E.weekMode(), 'LTA.ui.segPick(this)') +
         '<button class="btn btn-primary btn-big" onclick="LTA.ui.submitReview(\'' + due.weekStart + '\')">Build next week</button></div>';
     } else {
       h += '<div class="card"><p>No review due. It unlocks when a training week finishes.</p></div>';
@@ -2207,6 +2377,8 @@ LTA.ui = (function () {
       kneeMaxPain: g('kneeMaxPain'), kneeMorningPain: g('kneeMorningPain'), shoulderMaxPain: g('shoulderMaxPain'),
       abdominalMaxPain: g('abdominalMaxPain'), abdominalSide: readSide('revAbdSide'),
     };
+    const modeBtn = document.querySelector('#revModeSeg .seg-btn.active');
+    if (modeBtn) answers.mode = modeBtn.dataset.mode;
     if (answers.abdominalMaxPain > 0) {
       // Keep the weekly figure in the pain history (with side) so the chart and log pick it up.
       const rf = { area: 'abdominal', label: 'Lower abdominal', severity: answers.abdominalMaxPain, when: 'review', date: U.todayStr(), context: 'review' };
@@ -2262,6 +2434,8 @@ LTA.ui = (function () {
       D.OVERHEAD_RUNGS.map((r) => '<div class="stage-dot' + (r.id < sh.rungId ? ' passed' : r.id === sh.rungId ? ' current' : '') + '" title="' + esc(D.EXERCISES[r.exerciseId].name) + '">' + (r.id + 1) + '</div>').join('') +
       '</div><p>' + esc(D.EXERCISES[D.OVERHEAD_RUNGS[sh.rungId].exerciseId].name) + ' · clean sessions ' + sh.sessionsAtRung + '/' + D.OVERHEAD_RUNGS[sh.rungId].sessionsRequired + '</p></div>';
 
+    h += popupProgressHTML();
+
     // Pain trends
     h += '<div class="card"><div class="card-title">Pain trend (weekly max)</div><canvas id="painChart" width="640" height="200"></canvas>' +
       '<p class="muted"><span class="dotk"></span> knee &nbsp; <span class="dots"></span> shoulder &nbsp; <span class="dota"></span> lower abdominal</p>' +
@@ -2274,6 +2448,32 @@ LTA.ui = (function () {
     view.innerHTML = h;
     requestAnimationFrame(drawCharts);
   }
+
+  // Surf pop-up ladder: stage track, recent hip-pinch entries, in-water stand-up rate.
+  function popupProgressHTML() {
+    const s = S();
+    const ps = E.popupState();
+    const t = E.popupStageForToday();
+    let h = '<div class="card"><div class="card-title">🏄 Pop-up ladder</div><div class="stage-track">' +
+      D.POPUP_STAGES.map((st) => '<div class="stage-dot' + (st.id < ps.stageId ? ' passed' : st.id === ps.stageId ? ' current' : '') + '" title="' + esc(D.EXERCISES[st.exerciseId].name) + '">' + (st.id + 1) + '</div>').join('') +
+      '</div><p>' + esc(D.EXERCISES[D.POPUP_STAGES[ps.stageId].exerciseId].name) + ' · pinch-free sessions ' + ps.sessionsAtStage + '/' + (t.required >= 999 ? '∞' : t.required) + '</p>';
+    if (t.capped) h += '<p class="muted">Held at a step-through while the lower-abdominal caution is on.</p>';
+    const hip = s.painLog.filter((f) => f.area === 'hip').slice(-8);
+    h += hip.length
+      ? '<p class="muted">Recent front-of-hip pinch: ' + hip.map((f) => esc(f.date.slice(5)) + ' <strong>' + f.severity + '</strong>' + (f.context === 'racket' ? ' (water)' : '')).join(' · ') + '</p>'
+      : '<p class="muted">No hip pinch logged yet — you rate it each time you finish a session with pop-up drills.</p>';
+    const rateOf = (x) => x.popupRate !== undefined ? x.popupRate : (x.popupsTried ? Math.round(100 * (x.popupsMade || 0) / x.popupsTried) : null);
+    const surfs = s.sessions.filter((x) => x.sport === 'Surf' && rateOf(x) !== null).slice(-6);
+    if (surfs.length) {
+      h += '<p class="muted">In the water — share of waves you got to your feet on: ' + surfs.map((x) => esc(x.date.slice(5)) + ' <strong>~' + rateOf(x) + '%</strong>').join(' · ') + '</p>';
+    }
+    h += '<label>Set my stage (if it’s too easy or too hard)</label><select class="input" onchange="LTA.ui.setPopupStage(this.value)">' +
+      D.POPUP_STAGES.map((st) => '<option value="' + st.id + '"' + (st.id === ps.stageId ? ' selected' : '') + '>' + (st.id + 1) + '. ' + esc(D.EXERCISES[st.exerciseId].name) + '</option>').join('') + '</select>';
+    h += '</div>';
+    return h;
+  }
+
+  function setPopupStage(v) { E.setPopupStage(v); render(); toast('Pop-up ladder updated.'); }
 
   // Correlates racket-session effort (serving / movement intensity) with pain, and shows
   // when in the session pain tends to show up — the data captured by the racket player's
@@ -2511,6 +2711,8 @@ LTA.ui = (function () {
     h += '<div class="card"><div class="card-title">Training</div>' +
       '<label class="check" style="margin-top:4px"><input type="checkbox" id="setAutoRest"' + (s.settings.autoRest !== false ? ' checked' : '') + '> Auto-regulate rest on heavy lifts (count up until ready)</label>' +
       '<label>Default rest (seconds)</label><input class="input" id="setRest" type="number" value="' + s.settings.defaultRestSec + '">' +
+      '<label>Surf stance</label><select class="input" id="setStance">' +
+        [['regular', 'Regular — left foot forward'], ['goofy', 'Goofy — right foot forward']].map((o) => '<option value="' + o[0] + '"' + ((s.settings.surfStance || 'regular') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>' +
       '<label>Weekly skeleton</label>';
     ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d, i) => {
       h += '<div class="skel-row"><span>' + d + '</span><select class="input skel" data-i="' + i + '">' +
@@ -2616,6 +2818,7 @@ LTA.ui = (function () {
     const s = S();
     s.settings.autoRest = $('setAutoRest').checked;
     s.settings.defaultRestSec = Number($('setRest').value) || 90;
+    if ($('setStance')) s.settings.surfStance = $('setStance').value;
     document.querySelectorAll('.skel').forEach((sel) => { s.settings.skeleton[Number(sel.dataset.i)] = sel.value; });
     LTA.store.save(true);
     toast('Saved. New skeleton applies from next week.');
@@ -2655,7 +2858,7 @@ LTA.ui = (function () {
     startRest, stopRest, adjustRest, restReady,
     startRunTimer, toggleRunTimer, stopRunTimer, finishRun, confirmRunFinish, openRunNoteModal, saveRunNote,
     skipRun, openRunSwap, confirmRunSwap, condPick,
-    finishRacket, finishSimple, segPick, sportPick, painAreaPick,
+    finishRacket, finishSimple, segPick, sportPick, painAreaPick, paddlePick, setMode, setPopupStage, surfAddArea, popNoneToggle,
     openPainModal, savePainFlag, openRacketFollowUp, saveRacketFollowUp,
     openAddPainArea, confirmAddPainArea, removeExtraAreaFromTemplate, removeSessionExtraArea,
     openFinishModal, confirmFinish, openRecoveryFinishModal, confirmRecoveryFinish, pickFeel,

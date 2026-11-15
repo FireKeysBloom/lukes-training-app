@@ -197,6 +197,48 @@ LTA.data = (function () {
     ['Rotate from the hips first, arms follow — same whip as popping up into a turn', 'Full recovery between reps, max intent every throw', 'Both sides — reps are per side'],
     ['pallof_press'], { video: yt('rotational medicine ball throw core power') });
 
+  // ---- Surf focus (surf-mode weeks swap these in for the racket-specific items) ----
+  ex('popup_pushup', 'Explosive Push-Up (pop-up push-off)', 'power', 'bodyweight', [5, 5], 0,
+    ['Push the floor away so hard the hands leave it — this is the first half of a pop-up', 'Body rigid, ribs down, land soft with bent elbows', 'Full rest between sets; stop when the push gets slow'],
+    ['mb_chest_throw'], { video: yt('explosive plyometric push up technique') });
+  ex('prone_cobra_hold', 'Prone Cobra Hold (paddle posture)', 'rehab', 'floor or bench', [20, 40], 0,
+    ['Chest lifted from the upper back, chin tucked, eyes down', 'Shoulder blades down and back, hands hovering by the hips', 'The paddling position — builds endurance so the neck stays relaxed'],
+    ['prone_y'], { unit: 'seconds', video: yt('prone cobra hold thoracic extension endurance') });
+  ex('hip_flexor_liftoff', 'Seated Knee Lift-Off', 'rehab', 'floor or bench', [6, 8], 0,
+    ['Sit tall, lift one knee toward the chest with muscle — no hands helping', 'Hold 3 s at the top; stop just shy of any pinch', 'Owning this top range is what lets the legs come through on the pop-up'],
+    [], { video: yt('seated active hip flexion lift off end range strength') });
+  ex('hip_prep_flow', 'Hip Prep for the Pop-Up', 'mobility', 'floor', [8, 8], 0,
+    ['Quadruped rock-backs ×10 — shift the hips slightly toward the pinchy side to find the pinch-free path', '90/90 hip switches ×8 per side', 'Half-kneeling hip-flexor stretch, glute squeezed, 2 × 30 s per side (opens the front hip for the cobra)', 'Seated knee lift-offs ×5 per side, 3 s holds', 'Low lunge with the front knee OUTSIDE the elbow, rock ×6 per side — the pop-up front-leg position'],
+    [], { unit: 'minutes', video: yt('hip mobility routine surf pop up') });
+  ex('swim_intervals', 'Swim Intervals (freestyle)', 'conditioning', 'pool', [25, 30], 0,
+    ['5 min easy, then 8–10 × 50 m strong / 30 s rest, 5 min easy', 'Long reach, high-elbow catch — it’s the paddle stroke', 'Right shoulder above 2/10 → switch to the SkiErg for the rest'],
+    ['skierg_intervals'], { unit: 'minutes', painGate: 'shoulder', video: yt('freestyle swimming catch technique high elbow') });
+  ex('skierg_intervals', 'SkiErg Intervals', 'conditioning', 'SkiErg', [25, 30], 0,
+    ['5 min easy, then 8 × 1 min hard / 1 min easy, 5 min easy', 'Lats drive the handles down, arms stay long — like a paddle pull', 'Hard = can say words, not sentences'],
+    ['band_paddle_intervals'], { unit: 'minutes', video: yt('skierg technique') });
+  ex('band_paddle_intervals', 'Prone Band Paddle Intervals', 'conditioning', 'bench + cable or bands', [20, 25], 0,
+    ['Lie prone on a bench, chest up — alternate-arm paddle pulls on a light cable or bands', '10 × 40 s paddling / 20 s rest', 'Arm bike works as a stand-in if the bench is taken'],
+    ['skierg_intervals'], { unit: 'minutes', video: yt('prone band paddle surf training') });
+
+  // ---- Pop-up ladder (each stage its own exercise so history stays separate) ----
+  // Regular stance: the LEFT foot lands forward. Gated on front-of-hip pinch ≤2/10.
+  const POPUP_PINCH_CUES = ['Push the floor away first so the hips rise and make room for the legs', 'Front knee travels OUTSIDE the left elbow, not straight up the middle', 'Let the hips open sideways as the feet land — surf stance is side-on'];
+  ex('popup_step_elevated', 'Pop-Up · Hands-Elevated Step-Through', 'power', 'bench or box', [5, 5], 0,
+    ['Hands on a bench, start in cobra; push up into a high plank'].concat(POPUP_PINCH_CUES.slice(1, 2), ['Step the left foot through between the hands, then rise into stance']),
+    [], { video: yt('surf pop up progression beginner step through') });
+  ex('popup_step_floor', 'Pop-Up · Floor Step-Through', 'power', 'floor', [5, 5], 0,
+    ['From cobra on the floor, push up and drop the back knee down', 'Step the left foot through outside the elbow, then rise into stance', 'Slow and smooth — position before speed'],
+    [], { video: yt('surf pop up knee step through drill') });
+  ex('popup_elevated', 'Pop-Up · Hands-Elevated Full', 'power', 'bench or box', [5, 5], 0,
+    POPUP_PINCH_CUES.concat(['Hands on a bench gives the legs more room — both feet arrive in one move']),
+    [], { video: yt('incline surf pop up drill bench') });
+  ex('popup_slow', 'Pop-Up · Floor, Slow & Paused', 'power', 'floor', [5, 5], 0,
+    ['Three counts: hips high (pause) → feet land (pause) → stand tall'].concat(POPUP_PINCH_CUES.slice(1)),
+    [], { video: yt('slow surf pop up drill') });
+  ex('popup_paddle', 'Pop-Up · Paddle-to-Pop', 'power', 'floor or bench', [5, 5], 0,
+    ['5 hard alternate-arm paddle strokes from prone, then pop straight up', 'Eyes up and forward the whole time — look where you’re going', 'Land low in stance, front knee bent, and hold 2 s'],
+    ['surf_popup'], { video: yt('surf pop up paddle drill dry land') });
+
   // ---- Load semantics ----
   // barKg      = weight of the empty implement; it's the floor for that lift (never shows "BW").
   // bodyweight = your own bodyweight is the base load, so 0 displays as "BW" and any added
@@ -217,6 +259,9 @@ LTA.data = (function () {
     sl_calf_raise: { bodyweight: true }, tibialis_raise: { bodyweight: true },
     band_lateral_walk: { bodyweight: true }, side_hip_abduction: { bodyweight: true },
     serratus_wall_slide: { bodyweight: true }, thoracic_ext_roller: { bodyweight: true },
+    popup_pushup: { bodyweight: true }, prone_cobra_hold: { bodyweight: true }, hip_flexor_liftoff: { bodyweight: true },
+    popup_step_elevated: { bodyweight: true }, popup_step_floor: { bodyweight: true }, popup_elevated: { bodyweight: true },
+    popup_slow: { bodyweight: true }, popup_paddle: { bodyweight: true },
   };
   Object.keys(LOAD_META).forEach((id) => { if (EX[id]) Object.assign(EX[id], LOAD_META[id]); });
 
@@ -242,6 +287,7 @@ LTA.data = (function () {
     hip_airplane: 'each', cable_row_1arm: 'each', landmine_press: 'each',
     med_ball_chop: 'each', cable_er_9090: 'each', side_lying_er: 'each',
     dead_bug: 'alternate', heel_tap_dead_bug: 'alternate', pallof_press: 'each', rotational_mb_throw: 'each',
+    hip_flexor_liftoff: 'each',
   };
   Object.keys(SIDES_META).forEach((id) => { if (EX[id]) EX[id].sides = SIDES_META[id]; });
 
@@ -253,11 +299,15 @@ LTA.data = (function () {
     box_jump: 'step_up_power',
     rotational_mb_throw: 'pallof_press',
     med_ball_chop: 'pallof_press',
+    surf_popup: 'popup_step_floor',
+    popup_paddle: 'popup_step_floor',
   };
   Object.keys(ABDOMINAL_SUBS).forEach((id) => { if (EX[id]) EX[id].abdominalSub = ABDOMINAL_SUBS[id]; });
 
   // Isometric holds have no up/down rhythm.
-  ['side_plank', 'dead_hang', 'farmer_carry'].forEach((id) => { if (EX[id]) EX[id].tempo = 'hold'; });
+  ['side_plank', 'dead_hang', 'farmer_carry', 'prone_cobra_hold'].forEach((id) => { if (EX[id]) EX[id].tempo = 'hold'; });
+  // Controlled skill drills (and the timed hip flow) have no beat count — position before speed.
+  ['popup_step_elevated', 'popup_step_floor', 'popup_elevated', 'popup_slow', 'hip_prep_flow'].forEach((id) => { if (EX[id]) EX[id].tempo = ''; });
 
   // ---- Prescriptions helper ----
   // main:true + strengthRange → in a Strength phase, the rep target drops to strengthRange (periodisation).
@@ -350,6 +400,75 @@ LTA.data = (function () {
   // 4 lifts + 2 conditioning + 1 recovery. Racket sessions overlay via the reshuffler.
   const WEEK_SKELETON = ['lowerA', 'upperA', 'run', 'upperB', 'lowerB', 'z2', 'rest'];
 
+  // ---- Weekly focus modes ----
+  // Racket = the DAYS above, unchanged. Surf = the same day ids (so deload cadence, reshuffling and
+  // illness logic don't care) with the racket-specific pieces swapped for surf ones. Day types not
+  // listed here (run, rest, racket, custom) are identical in both modes.
+  const MODES = {
+    racket: { id: 'racket', label: 'Racket', emoji: '🎾' },
+    surf: { id: 'surf', label: 'Surf', emoji: '🏄' },
+  };
+  // Placeholder resolved by the engine to the current pop-up ladder stage.
+  const POPUP_ITEM = p('__popup', 3, 5, 5, 90, 'rehab', 'Skill practice: crisp reps, full rest. Stop the set if the hip pinches.', { popupLadder: true });
+  const SURF_DAYS = {
+    lowerA: {
+      name: 'Lower · Squat & Pop-up',
+      warmup: ['3 min easy bike OR 5 min backward treadmill walk', 'Quadruped rock-backs ×10 + 90/90 hip switches ×6/side', 'Bodyweight squats ×10 + hip airplane ×5/side', 'Bar squat ×8, then +50% ×5 (ramp-up)'],
+      blocks: [
+        { title: 'Power — pop-up ladder', items: [POPUP_ITEM] },
+        DAYS.lowerA.blocks[1], DAYS.lowerA.blocks[2], DAYS.lowerA.blocks[3],
+      ],
+    },
+    upperA: {
+      name: 'Upper · Chest, Biceps & Push-off',
+      warmup: DAYS.upperA.warmup,
+      blocks: [
+        { title: 'Power', items: [p('popup_pushup', 3, 5, 5, 120, 'rehab', 'The push-off half of the pop-up — max intent')] },
+        DAYS.upperA.blocks[1], DAYS.upperA.blocks[2], DAYS.upperA.blocks[3],
+      ],
+    },
+    upperB: {
+      name: 'Upper · Back, Shoulders & Paddle',
+      warmup: DAYS.upperB.warmup,
+      blocks: [
+        DAYS.upperB.blocks[0], // overhead ladder must stay at index 0 — the engine writes the current rung there
+        DAYS.upperB.blocks[1], DAYS.upperB.blocks[2],
+        { title: 'Paddle endurance', items: [p('straight_arm_pulldown', 3, 15, 20, 60, 'double', 'Paddle pull — long lever, higher reps'), p('prone_cobra_hold', 2, 20, 40, 45, 'timed', 'Paddle posture — build toward 40 s')] },
+        DAYS.upperB.blocks[4],
+      ],
+    },
+    lowerB: {
+      name: 'Lower · Hinge & Rotation',
+      warmup: ['3 min easy bike', 'Quadruped rock-backs ×10 + 90/90 hip switches ×6/side', 'Glute bridges ×12', 'Light trap-bar ×5 (ramp-up)'],
+      blocks: [
+        { title: 'Power', items: [p('rotational_mb_throw', 3, 5, 5, 120, 'rehab', 'Hips first, arms follow — turning power')] },
+        DAYS.lowerB.blocks[1],
+        { title: 'Muscle', items: [p('bss', 3, 8, 12, 105), p('hip_thrust', 3, 8, 12, 105), p('hip_flexor_liftoff', 2, 6, 8, 45, 'rehab', 'End-range hip flexion — the range the pinch lives in')] },
+        DAYS.lowerB.blocks[3],
+      ],
+    },
+    z2: {
+      name: 'Conditioning · Paddle + Surf Skills',
+      warmup: ['First 3–5 min easy — that’s the warmup'],
+      blocks: [
+        { title: 'Paddle engine (pick one, ~25–30 min)', items: [] }, // chosen in the Engine player
+        { title: 'Surf skills & hips', items: [p('hip_prep_flow', 1, 8, 8, 0, 'timed', '~8 min, slow and controlled'), POPUP_ITEM] },
+      ],
+    },
+  };
+  const PADDLE_OPTIONS = ['swim_intervals', 'skierg_intervals', 'band_paddle_intervals'];
+
+  // Pop-up ladder: hip pinch ≤2/10 on 2 sessions advances; 3–4 repeats; ≥5 drops a stage.
+  const POPUP_STAGES = [
+    { id: 0, exerciseId: 'popup_step_elevated', sessionsRequired: 2 },
+    { id: 1, exerciseId: 'popup_step_floor', sessionsRequired: 2 },
+    { id: 2, exerciseId: 'popup_elevated', sessionsRequired: 2 },
+    { id: 3, exerciseId: 'popup_slow', sessionsRequired: 2 },
+    { id: 4, exerciseId: 'surf_popup', sessionsRequired: 2 },
+    { id: 5, exerciseId: 'popup_paddle', sessionsRequired: 999 },
+  ];
+  const POPUP_ABDOMINAL_CAP = 1; // step-throughs only while the lower-abdominal caution is on
+
   // ---- Return-to-run stages ----
   const RUN_STAGES = [
     { id: 0, name: 'Baseline walk', protocol: '30 min incline walk, brisk', intervals: [{ run: 0, walk: 30 }], totalRunMin: 0, completionsRequired: 1 },
@@ -417,5 +536,5 @@ LTA.data = (function () {
     { title: 'Rest or gentle walk', kind: 'rest', minutes: '0–20', steps: ['Full rest or a relaxed walk', 'Check in: do you feel close to normal?'], note: 'If you feel normal, the regular plan resumes after this. If not, repeat a light week or report illness.' }
   ];
 
-  return { LIGHT_PLAN, LIGHT_RULES, LIGHT_STOP_SIGNS, EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS, defaultTempo, TEMPO_MAIN };
+  return { MODES, SURF_DAYS, PADDLE_OPTIONS, POPUP_STAGES, POPUP_ABDOMINAL_CAP, LIGHT_PLAN, LIGHT_RULES, LIGHT_STOP_SIGNS, EXERCISES: EX, DAYS, WEEK_SKELETON, RUN_STAGES, RUN_CUES, SPRINT_STAGES, OVERHEAD_RUNGS, MAIN_LIFTS, defaultTempo, TEMPO_MAIN };
 })();

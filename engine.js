@@ -19,10 +19,125 @@ LTA.engine = (function () {
     for (let i = 0; i < 7; i++) {
       days.push({ date: U.addDays(weekStart, i), dayType: s.settings.skeleton[i] || 'rest', status: 'planned' });
     }
+    const mode = (s.settings && s.settings.trainingMode) === 'surf' ? 'surf' : 'racket';
+    const decisions = isDeload ? ['Deload week: 2 sets per lift at −10%, easy conditioning only.'] : [];
+    if (mode === 'surf') decisions.push('Surf focus this week — pop-up, paddle and rotation work replace the racket-specific pieces.');
     return {
-      weekStart, isDeload: !!isDeload, kneeCaution: false, mergedUpper: false,
-      days, decisions: isDeload ? ['Deload week: 2 sets per lift at −10%, easy conditioning only.'] : [],
+      weekStart, isDeload: !!isDeload, kneeCaution: false, mergedUpper: false, mode,
+      days, decisions,
     };
+  }
+
+  // ---------- Weekly focus (racket / surf) ----------
+
+  function weekMode(w) {
+    const wk = w === undefined ? S().currentWeek : w;
+    return wk && wk.mode === 'surf' ? 'surf' : 'racket';
+  }
+
+  // Switch the current week's focus; it also becomes the default for the weeks that follow.
+  // Only what's prescribed changes — days already done keep what was logged.
+  function setWeekMode(mode, quiet) {
+    const s = S();
+    const m = mode === 'surf' ? 'surf' : 'racket';
+    s.settings.trainingMode = m;
+    const w = s.currentWeek;
+    if (w && w.mode !== m) {
+      w.mode = m;
+      if (!quiet) decide(m === 'surf'
+        ? 'Switched to SURF focus — pop-up ladder, paddle endurance and rotational power replace jumps, grip and the adductor machine; Engine day becomes paddle conditioning + surf skills.'
+        : 'Switched to RACKET focus — jumps, grip and court-movement work are back.');
+    }
+    LTA.store.save(true);
+  }
+
+  // Display name for a day type under a given mode (defaults to the current week's).
+  function dayName(dayType, mode) {
+    const m = mode || weekMode();
+    const surf = m === 'surf' && D.SURF_DAYS[dayType];
+    if (surf) return surf.name;
+    return D.DAYS[dayType] ? D.DAYS[dayType].name : dayType;
+  }
+
+  function dayWarmup(dayType, mode) {
+    const m = mode || weekMode();
+    const surf = m === 'surf' && D.SURF_DAYS[dayType];
+    if (surf && surf.warmup) return surf.warmup;
+    return D.DAYS[dayType] ? D.DAYS[dayType].warmup : [];
+  }
+
+  // ---------- Pop-up ladder ----------
+
+  function popupState() {
+    const s = S();
+    if (!s.popupState) s.popupState = { stageId: 0, sessionsAtStage: 0, highHipStreak: 0 };
+    return s.popupState;
+  }
+
+  // The stage actually prescribed today: capped while the lower-abdominal caution is on.
+  function popupStageForToday() {
+    const s = S();
+    const ps = popupState();
+    let id = Math.max(0, Math.min(D.POPUP_STAGES.length - 1, ps.stageId));
+    const capped = !!(s.abdominalState && s.abdominalState.caution) && id > D.POPUP_ABDOMINAL_CAP;
+    if (capped) id = D.POPUP_ABDOMINAL_CAP;
+    return { stage: D.POPUP_STAGES[id], capped, sessions: ps.sessionsAtStage, required: D.POPUP_STAGES[ps.stageId].sessionsRequired, realStageId: ps.stageId };
+  }
+
+  function setPopupStage(id) {
+    const ps = popupState();
+    const n = Math.max(0, Math.min(D.POPUP_STAGES.length - 1, Number(id) || 0));
+    if (n === ps.stageId) return;
+    ps.stageId = n; ps.sessionsAtStage = 0; ps.highHipStreak = 0;
+    decide('Pop-up ladder set to stage ' + (n + 1) + ': ' + D.EXERCISES[D.POPUP_STAGES[n].exerciseId].name + '.');
+    LTA.store.save(true);
+  }
+
+  const POPUP_IDS = () => D.POPUP_STAGES.map((st) => st.exerciseId);
+
+  // Gate the ladder on front-of-hip pinch during the drill. Runs only when the session
+  // actually logged sets of a ladder drill.
+  function applyPopupLadder(session) {
+    const s = S();
+    const ids = POPUP_IDS();
+    const sets = (session.sets || []).filter((x) => ids.includes(x.exerciseId));
+    if (!sets.length) return;
+    const hip = Number(session.popupHip || 0);
+    const ps = popupState();
+    const today = popupStageForToday();
+    const stage = D.POPUP_STAGES[ps.stageId];
+    const didCurrent = sets.some((x) => x.exerciseId === today.stage.exerciseId);
+    const already = (session.painFlags || []).some((f) => f.area === 'hip' && f.severity >= hip);
+    if (hip > 0 && !already) {
+      const flag = { area: 'hip', label: 'Front of hip', severity: hip, when: 'during', date: session.date, context: 'popup' };
+      s.painLog.push(flag);
+      session.painFlags = session.painFlags || [];
+      session.painFlags.push(flag);
+    }
+    ps.highHipStreak = hip >= 3 ? (ps.highHipStreak || 0) + 1 : 0;
+    if (ps.highHipStreak === 3) decide('Front-of-hip pinch has been 3/10 or more for 3 pop-up sessions in a row — worth getting it looked at by a physio; drills alone may not fix a structural pinch.');
+    if (!didCurrent) return; // did an older/other drill — logged, but doesn't move the ladder
+    if (hip >= 5) {
+      if (ps.stageId > 0) {
+        ps.stageId--;
+        decide('Hip pinch ' + hip + '/10 on pop-ups → ladder steps back to ' + D.EXERCISES[D.POPUP_STAGES[ps.stageId].exerciseId].name + '.');
+      } else {
+        decide('Hip pinch ' + hip + '/10 on pop-ups → staying on stage 1; keep the hip prep flow and slow reps.');
+      }
+      ps.sessionsAtStage = 0;
+    } else if (hip >= 3) {
+      ps.sessionsAtStage = 0;
+      decide('Hip pinch ' + hip + '/10 on pop-ups → repeating ' + D.EXERCISES[stage.exerciseId].name + '.');
+    } else if (today.capped) {
+      decide('Pop-up ladder held while the lower-abdominal caution is on.');
+    } else {
+      ps.sessionsAtStage++;
+      if (ps.sessionsAtStage >= stage.sessionsRequired && ps.stageId < D.POPUP_STAGES.length - 1) {
+        ps.stageId++;
+        ps.sessionsAtStage = 0;
+        decide('Pop-up ladder: advanced to ' + D.EXERCISES[D.POPUP_STAGES[ps.stageId].exerciseId].name + '.');
+      }
+    }
   }
 
   // Mark every trainable day in a week as sick — used both when a brand-new week is
@@ -286,12 +401,23 @@ LTA.engine = (function () {
 
   // Resolve the day template into concrete prescriptions for the current state
   // (overhead rung, deload, merged upper, extra rehab volume).
-  function prescriptionsForDay(dayType) {
+  function prescriptionsForDay(dayType, modeOverride) {
     const s = S();
     const w = s.currentWeek;
     const tpl = D.DAYS[dayType];
     if (!tpl) return null;
-    const blocks = JSON.parse(JSON.stringify(tpl.blocks));
+    const mode = modeOverride || weekMode(w);
+    const surfTpl = mode === 'surf' ? D.SURF_DAYS[dayType] : null;
+    const blocks = JSON.parse(JSON.stringify(surfTpl ? surfTpl.blocks : tpl.blocks));
+
+    // Pop-up ladder placeholder → today's stage (capped under the lower-abdominal caution).
+    blocks.forEach((b) => b.items.forEach((it) => {
+      if (!it.popupLadder) return;
+      const t = popupStageForToday();
+      it.exerciseId = t.stage.exerciseId;
+      it.popupStageId = t.stage.id;
+      if (t.capped) it.notes = 'Lower-abdominal caution: step-through pop-ups only, ladder on hold';
+    }));
 
     if (dayType === 'upperB' || (dayType === 'upperA' && w && w.mergedUpper)) {
       const rung = D.OVERHEAD_RUNGS[s.shoulderState.rungId];
@@ -342,7 +468,7 @@ LTA.engine = (function () {
       if (to && D.EXERCISES[to]) { it.swappedFrom = it.exerciseId; it.exerciseId = to; }
     }));
 
-    if (w && w.kneeCaution && dayType === 'z2') {
+    if (w && w.kneeCaution && dayType === 'z2' && mode !== 'surf') {
       blocks[0].items.forEach((it) => { it.notes = 'Bike only this week (knee caution)'; });
     }
 
@@ -434,6 +560,7 @@ LTA.engine = (function () {
 
   function applySessionEnd(session) {
     const s = S();
+    if (!session.mode) session.mode = weekMode();
     s.sessions.push(session);
     (session.painFlags || []).forEach((f) => s.painLog.push(f));
 
@@ -441,7 +568,7 @@ LTA.engine = (function () {
     if (day && day.status === 'planned') day.status = 'done';
 
     // Progression per exercise (strength-type days).
-    const blocks = prescriptionsForDay(session.dayType);
+    const blocks = prescriptionsForDay(session.dayType, session.mode);
     if (blocks && session.sets && session.sets.length) {
       const byEx = {};
       session.sets.forEach((x) => { (byEx[x.exerciseId] = byEx[x.exerciseId] || []).push(x); });
@@ -506,12 +633,24 @@ LTA.engine = (function () {
       }
     }
 
+    // Pop-up ladder (surf skills), gated on front-of-hip pinch.
+    applyPopupLadder(session);
+
+    // Paddle conditioning (surf Engine day): the paddling shoulder gets the same check as play.
+    const paddled = (session.sets || []).some((x) => D.PADDLE_OPTIONS.includes(x.exerciseId));
+    if (paddled) {
+      const shPaddle = maxFlag(session.painFlags, 'shoulder', 'during');
+      if (shPaddle >= 3) dropRung('Shoulder pain ' + shPaddle + '/10 while paddling');
+      else queueCheckIn(session.date, 'shoulder', 'paddle', shPaddle);
+    }
+
     // Racket play: check the serving shoulder tomorrow.
     if (session.dayType === 'racket') {
       const shoulderRacket = maxFlag(session.painFlags, 'shoulder', 'during');
       if (shoulderRacket >= 3) {
         dropRung('Shoulder pain ' + shoulderRacket + '/10 while playing — ease off overhead volume this week');
-      } else {
+      } else if (!session.shoulderNotAsked) {
+        // A surf log where the shoulder card was never opened gets no morning shoulder question.
         queueCheckIn(session.date, 'shoulder', 'racket', shoulderRacket, null, session.sport);
       }
     }
@@ -652,8 +791,8 @@ LTA.engine = (function () {
         } else {
           dropRung('Shoulder ' + worst + '/10 the morning after pressing');
         }
-      } else if (ci.context === 'racket' && severity >= 3) {
-        dropRung('Shoulder ' + severity + '/10 the morning after playing — reduce overhead volume');
+      } else if ((ci.context === 'racket' || ci.context === 'paddle') && severity >= 3) {
+        dropRung('Shoulder ' + severity + '/10 the morning after ' + (ci.context === 'paddle' ? 'paddling' : 'playing') + ' — reduce overhead volume');
       }
     }
     LTA.store.save(true);
@@ -697,7 +836,7 @@ LTA.engine = (function () {
     const z2Day = w.days.find((d) => d.dayType === 'z2' && d.status === 'planned');
     if (count === 1 && z2Day) {
       z2Day.status = 'skipped';
-      decide(U.weekdayName(z2Day.date) + ' Zone-2 dropped — racket play covered conditioning.');
+      decide(U.weekdayName(z2Day.date) + ' ' + dayName('z2') + ' dropped — the play/surf session covered conditioning.');
     } else if (count === 2) {
       const runDay = w.days.find((d) => d.dayType === 'run' && d.status === 'planned');
       if (runDay) { runDay.optional = true; decide(U.weekdayName(runDay.date) + ' run is now optional (bike ok) — two play sessions this week.'); }
@@ -709,17 +848,17 @@ LTA.engine = (function () {
       if (slot) {
         slot.dayType = displaced;
         slot.status = 'planned';
-        decide(D.DAYS[displaced].name + ' moved to ' + U.weekdayName(slot.date) + '.');
+        decide(dayName(displaced) + ' moved to ' + U.weekdayName(slot.date) + '.');
       } else if (displaced === 'upperB' || displaced === 'upperA') {
         const other = displaced === 'upperB' ? 'upperA' : 'upperB';
         if (w.days.some((d) => d.dayType === other && d.status === 'planned')) {
           w.mergedUpper = true;
           decide('No free day left — upper sessions merged (overhead work joins the remaining upper day).');
         } else {
-          decide(D.DAYS[displaced].name + ' dropped this week — resumes next week.');
+          decide(dayName(displaced) + ' dropped this week — resumes next week.');
         }
       } else {
-        decide(D.DAYS[displaced].name + ' dropped this week — lower days are never merged; resumes next week.');
+        decide(dayName(displaced) + ' dropped this week — lower days are never merged; resumes next week.');
       }
     }
 
@@ -771,7 +910,7 @@ LTA.engine = (function () {
 
     if (donor && displaced) {
       donor.dayType = displaced;
-      decide(D.DAYS[takeType].name + ' pulled to ' + U.weekdayName(day.date) + '; ' + D.DAYS[displaced].name + ' takes ' + U.weekdayName(donor.date) + '.');
+      decide(dayName(takeType) + ' pulled to ' + U.weekdayName(day.date) + '; ' + dayName(displaced) + ' takes ' + U.weekdayName(donor.date) + '.');
       // Don't leave two heavy lower days back-to-back after the trade.
       const isLower = (t) => t === 'lowerA' || t === 'lowerB';
       w.days.forEach((d, i) => {
@@ -786,19 +925,19 @@ LTA.engine = (function () {
       });
     } else if (donor && !displaced) {
       donor.dayType = 'rest';
-      decide(D.DAYS[takeType].name + ' pulled to ' + U.weekdayName(day.date) + '; ' + U.weekdayName(donor.date) + ' becomes recovery.');
+      decide(dayName(takeType) + ' pulled to ' + U.weekdayName(day.date) + '; ' + U.weekdayName(donor.date) + ' becomes recovery.');
     } else if (displaced && D.DAYS[displaced].kind === 'strength') {
       const slot = w.days.find((d) => d !== day && d.status === 'planned' && (d.dayType === 'rest' || d.dayType === 'z2'));
       if (slot) {
         slot.dayType = displaced;
-        decide(D.DAYS[displaced].name + ' moved to ' + U.weekdayName(slot.date) + '.');
+        decide(dayName(displaced) + ' moved to ' + U.weekdayName(slot.date) + '.');
       } else {
-        decide(D.DAYS[displaced].name + ' dropped this week — no free day left.');
+        decide(dayName(displaced) + ' dropped this week — no free day left.');
       }
     } else if (displaced) {
-      decide(D.DAYS[displaced].name + ' skipped in favour of ' + D.DAYS[takeType].name + '.');
+      decide(dayName(displaced) + ' skipped in favour of ' + dayName(takeType) + '.');
     } else {
-      decide(D.DAYS[takeType].name + ' added on ' + U.weekdayName(day.date) + '.');
+      decide(dayName(takeType) + ' added on ' + U.weekdayName(day.date) + '.');
     }
 
     LTA.store.save(true);
@@ -831,6 +970,12 @@ LTA.engine = (function () {
     const decisions = [];
     const adherence = adherenceOf(week);
     const readiness = answers.sleep + answers.energy + (6 - answers.soreness);
+
+    // Weekly focus picked in the review applies to the week being built.
+    if (answers.mode && answers.mode !== weekMode()) {
+      setWeekMode(answers.mode, true);
+      decisions.push(answers.mode === 'surf' ? 'Surf focus this week — pop-up ladder, paddle endurance and rotational power.' : 'Racket focus this week — jumps, grip and court movement.');
+    }
 
     // Readiness-triggered deload.
     const prevReview = s.reviews[s.reviews.length - 1];
@@ -885,7 +1030,7 @@ LTA.engine = (function () {
         let lowest = null;
         trainDays.forEach((d) => { if (!lowest || D.DAYS[d.dayType].priority < D.DAYS[lowest.dayType].priority) lowest = d; });
         if (lowest) {
-          decisions.push(D.DAYS[lowest.dayType].name + ' (' + U.weekdayName(lowest.date) + ') dropped — last week was under 50% adherence, keeping the week realistic.');
+          decisions.push(dayName(lowest.dayType) + ' (' + U.weekdayName(lowest.date) + ') dropped — last week was under 50% adherence, keeping the week realistic.');
           lowest.dayType = 'rest';
         }
       }
@@ -905,6 +1050,7 @@ LTA.engine = (function () {
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness, completedGymDays,
     startLightWeek, endLightWeek, lightDayIndex, setLightCheckIn, logLightSession,
+    weekMode, setWeekMode, dayName, dayWarmup, popupState, popupStageForToday, setPopupStage,
   };
 })();
 
