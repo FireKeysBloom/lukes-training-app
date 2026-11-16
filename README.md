@@ -8,7 +8,7 @@ Vanilla HTML/CSS/JS. No build step, no dependencies. Data lives in `localStorage
 
 - **Adaptive weekly rhythm** — 4 lifting days (45–60 min, each structured Power → Strength → Muscle → Resilience), 2 conditioning days (return-to-run + HIIT spin / incline steady state), 1 GMB-style recovery day. The week reshuffles automatically when racket sessions land (1–3×/week).
 - **Choose your day** — pull any scheduled session forward and the days trade places, or build a freestyle workout exercise-by-exercise; everything still counts toward progression.
-- **Auto-progression + periodisation** — double progression on lifts, stall detection with 10% resets, deload every 5th week or when readiness drops, and Build ↔ Strength blocks alternating between deloads.
+- **Auto-progression + periodisation** — double progression on lifts, stall detection with 10% resets, a deload after every 4 qualifying weeks (3 of 4 gym sessions; illness and light weeks don't count) or when readiness drops — interrupted deloads carry over, and Build ↔ Strength blocks alternating between deloads.
 - **Form first** — per-session tailored warmups, 2–3 cues per exercise, and a video search link to qualified coaches (Squat University, kneesovertoesguy, GMB, E3 Rehab, …) on every lift.
 - **Graded return-to-run** — 11 stages from incline walking to a 5k, each gated on discomfort staying ≤2/10 during the run and the next morning before advancing. Sprint work unlocks after 20 min continuous running clears the gate.
 - **Overhead loading ladder** — landmine press → barbell OHP in 5 rungs behind the same gating, with rotator-cuff, lower-trap, serratus and thoracic work as permanent fixtures on both upper days rather than a temporary phase.
@@ -61,6 +61,6 @@ On iPhone: open that URL in Safari → Share → **Add to Home Screen**.
 | `sync.js` | Supabase sync (plain fetch) |
 | `sw.js` | Offline cache |
 
-**Light week** (Today tab → 🍃 Start a light week): a 7-day graded-return plan for after a virus or when run down — easy aerobic days, two light full-body strength days, daily feel check, no HIIT/running/heavy lifting. It overlays the regular plan without counting as a training week, moving the deload cycle, or changing any progression state.
+**Light week** (Today tab → 🍃 Start a light week): a graded-return plan for the rest of the current week (to Sunday), for after a virus or when run down — easy aerobic days, two light full-body strength days, daily feel check, no HIIT/running/heavy lifting. It overlays the regular plan without counting as a training week or changing any progression state; a deload due that week moves to the next.
 
 Console dev harness: `LTA.dev.simulateWeeks(6, { kneePainOnRuns: [0,0,5], missRate: 0.1 })` fast-forwards state for testing.

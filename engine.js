@@ -161,12 +161,40 @@ LTA.engine = (function () {
     return week.days.filter((d) => GYM_DAY_TYPES.includes(d.dayType) && d.status === 'done').length;
   }
 
+  // ---------- Deload cadence ----------
+  // A deload is due after this many qualifying training weeks since the last completed deload,
+  // whatever triggered that deload (cycle, illness return, low-readiness review). Weeks that don't
+  // qualify (illness, light week, under 3/4 gym sessions) never count, and never reset it.
+  const WEEKS_BETWEEN_DELOADS = 4;
+
+  // Weeks closed before the gate existed have no flag; those counted unless wiped out.
+  function weekCounted(w) {
+    if (w.countedTowardCadence !== undefined) return !!w.countedTowardCadence;
+    const trainable = w.days.filter((d) => d.dayType !== 'rest');
+    return !trainable.length || !trainable.every((d) => d.status === 'sick' || d.status === 'light');
+  }
+
+  function weeksSinceDeload() {
+    const hist = S().weekHistory || [];
+    let n = 0;
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const w = hist[i];
+      if (!weekCounted(w)) continue;
+      if (w.isDeload) break;
+      n++;
+    }
+    return n;
+  }
+
+  function deloadDue() { return weeksSinceDeload() >= WEEKS_BETWEEN_DELOADS; }
+
   // Create/roll the current week so it always contains today.
   function ensureWeek() {
     const s = S();
     const monday = U.mondayOf(U.todayStr());
     if (!s.currentWeek) {
-      s.currentWeek = generateWeekPlan(monday, s.weekCounter % 5 === 0);
+      s.currentWeek = generateWeekPlan(monday, deloadDue());
+      if (s.currentWeek.isDeload) s.currentWeek.deloadReason = 'cycle';
       if (s.illness && s.illness.active) applyIllnessToWeek(s.currentWeek);
       applyLightToWeek(s.currentWeek);
       LTA.store.save();
@@ -185,8 +213,8 @@ LTA.engine = (function () {
       });
       const closing = s.currentWeek;
       s.weekHistory.push(closing);
-      // Deload/phase cadence pauses while unwell, and now also while under-trained: a week
-      // needs at least 3 of its 4 gym sessions done to count toward the 5-week cycle.
+      // A week needs at least 3 of its 4 gym sessions done (and not be an illness or light
+      // week) to count — both toward the Week N total and toward the next deload.
       const gymDone = completedGymDays(closing);
       const hadLight = closing.days.some((d) => d.status === 'light');
       const metCadence = !sick && !hadLight && gymDone >= 3;
@@ -199,7 +227,15 @@ LTA.engine = (function () {
         decide('Only ' + gymDone + '/4 gym sessions completed this week — does not count toward the deload cycle.');
       }
       const nextStart = U.addDays(closing.weekStart, 7);
-      s.currentWeek = generateWeekPlan(nextStart, s.weekCounter % 5 === 0);
+      // A deload week that didn't count (light week, or too few gym sessions) is still owed:
+      // carry it into the next week whatever triggered it (cycle, review or illness resume).
+      // Illness is excluded — sick days already carry their deload via resumeFromIllness.
+      const owedDeload = closing.isDeload && !metCadence && !sick;
+      const cycleDeload = !owedDeload && deloadDue();
+      s.currentWeek = generateWeekPlan(nextStart, owedDeload || cycleDeload);
+      if (owedDeload) s.currentWeek.deloadReason = closing.deloadReason || 'cycle';
+      else if (cycleDeload) s.currentWeek.deloadReason = 'cycle';
+      if (owedDeload) s.currentWeek.decisions.push('Deload carried over — last week ' + (hadLight ? 'was a light week' : 'had too few gym sessions to count') + ', so this week is the deload.');
       if (sick) applyIllnessToWeek(s.currentWeek);
       applyLightToWeek(s.currentWeek);
       // Block periodisation: coming off a deload, alternate Build ↔ Strength emphasis.
@@ -232,9 +268,11 @@ LTA.engine = (function () {
       s.illness = { active: false, startDate: null, reportedAt: null };
       decide('Ended the illness pause to ease back in with a light week (no missed sessions carried over).');
     }
-    s.lightWeek = { active: true, startDate: today, endDate: U.addDays(today, 6), checkIns: {}, done: {} };
+    // Contained in the calendar week (Mon–Sun) like every other week, so it never spills
+    // into the next week and disqualifies that one too.
+    s.lightWeek = { active: true, startDate: today, endDate: U.addDays(U.mondayOf(today), 6), checkIns: {}, done: {} };
     applyLightToWeek(s.currentWeek);
-    decide('Light week started — the regular plan is on hold and this week does not count toward the deload cycle.');
+    decide('Light week started (to Sunday) — the regular plan is on hold, this week does not count toward the cycle, and a deload due this week moves to next week.');
     LTA.store.save(true);
     return true;
   }
@@ -259,6 +297,13 @@ LTA.engine = (function () {
     const lw = S().lightWeek;
     if (!lw || !lw.active) return -1;
     return Math.min(6, Math.max(0, U.daysBetween(lw.startDate, U.todayStr())));
+  }
+
+  // Days in the active light week (1–7: from its start day to Sunday).
+  function lightWeekLength() {
+    const lw = S().lightWeek;
+    if (!lw || !lw.active) return 0;
+    return Math.min(7, U.daysBetween(lw.startDate, lw.endDate) + 1);
   }
 
   function setLightCheckIn(date, v) {
@@ -325,9 +370,14 @@ LTA.engine = (function () {
       if (w === s.currentWeek) return; // not yet closed — nothing to correct
       const trainable = w.days.filter((d) => d.dayType !== 'rest');
       const fullyWiped = trainable.length && trainable.every((d) => d.status === 'sick');
-      if (fullyWiped && w.countedTowardCadence) { s.weekCounter = Math.max(1, s.weekCounter - 1); voided++; }
+      if (fullyWiped && w.countedTowardCadence) { s.weekCounter = Math.max(1, s.weekCounter - 1); w.countedTowardCadence = false; voided++; }
     });
-    if (voided && s.currentWeek) s.currentWeek.isDeload = (s.weekCounter % 5 === 0);
+    // Only a cycle deload depends on the count; carried, illness and review deloads stand.
+    const cur = s.currentWeek;
+    if (voided && cur && (!cur.isDeload || cur.deloadReason === 'cycle' || !cur.deloadReason)) {
+      cur.isDeload = deloadDue();
+      cur.deloadReason = cur.isDeload ? 'cycle' : undefined;
+    }
 
     s.illness = { active: true, startDate: effectiveStart, reportedAt: today };
     decide('Marked unwell from ' + U.niceDate(effectiveStart) + ' — training paused until you resume.');
@@ -361,7 +411,7 @@ LTA.engine = (function () {
     });
     const carried = Math.min(carriedOver.length, openSlots.length);
     const dropped = Math.max(0, queue.length - openSlots.length);
-    if (anyDeload) w.isDeload = true;
+    if (anyDeload && !w.isDeload) { w.isDeload = true; w.deloadReason = 'illness'; }
 
     s.illness = { active: false, startDate: null, reportedAt: null };
     decide('Welcome back — ' + carried + ' missed session' + (carried === 1 ? '' : 's') + ' carried into this week.' +
@@ -982,7 +1032,7 @@ LTA.engine = (function () {
     const stalling = Object.values(s.exerciseStates).filter((x) => x.stallCount >= 2).length;
     if (!s.currentWeek.isDeload && readiness <= 7 && ((prevReview && prevReview.readiness <= 7) || stalling >= 2)) {
       s.currentWeek.isDeload = true;
-      s.weekCounter = 1;
+      s.currentWeek.deloadReason = 'review';
       decisions.push('Low readiness (' + readiness + '/15) → this week becomes a deload.');
     }
 
@@ -1049,7 +1099,7 @@ LTA.engine = (function () {
     ensureWeek, generateWeekPlan, dayForDate, sessionsForDate, applyUserExercises, prescriptionsForDay, runSpec, sprintSpec,
     progressExercise, applySessionEnd, dueCheckIns, resolveCheckIn, insertRacketSession, addRacketFollowUp,
     doDayInstead, reviewDue, processReview, adherenceOf, racketCount, reportIllness, resumeFromIllness, completedGymDays,
-    startLightWeek, endLightWeek, lightDayIndex, setLightCheckIn, logLightSession,
+    startLightWeek, endLightWeek, lightDayIndex, lightWeekLength, weeksSinceDeload, deloadDue, WEEKS_BETWEEN_DELOADS, setLightCheckIn, logLightSession,
     weekMode, setWeekMode, dayName, dayWarmup, popupState, popupStageForToday, setPopupStage,
   };
 })();
@@ -1109,7 +1159,7 @@ LTA.dev = (function () {
       const metCadence = LTA.engine.completedGymDays(week) >= 3;
       week.countedTowardCadence = metCadence;
       if (metCadence) s.weekCounter++;
-      s.currentWeek = LTA.engine.generateWeekPlan(U.addDays(week.weekStart, 7), s.weekCounter % 5 === 0);
+      s.currentWeek = LTA.engine.generateWeekPlan(U.addDays(week.weekStart, 7), (week.isDeload && !metCadence) || LTA.engine.deloadDue());
       LTA.engine.processReview(week.weekStart, Object.assign({ sleep: 4, energy: 4, soreness: 2, motivation: 4, kneeMaxPain: 0, kneeMorningPain: 0, shoulderMaxPain: 0, abdominalMaxPain: 0 }, opts.review || {}));
     }
     LTA.store.save(true);

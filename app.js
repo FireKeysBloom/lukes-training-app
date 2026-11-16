@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.11.15.12';
+  const APP_VERSION = '2026.11.16.13';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -2091,6 +2091,10 @@ LTA.ui = (function () {
     h += '<p class="muted">' + (E.weekMode() === 'surf'
       ? 'Pop-up ladder, paddle endurance and rotational power replace jumps, grip and the adductor machine. Engine day = paddle + surf skills. Strength, run and rehab work carry on as normal.'
       : 'Jumps, grip and court movement. Switch to Surf any time — only days not yet done change, and it sticks for the following weeks.') + '</p>';
+    const left = E.WEEKS_BETWEEN_DELOADS - E.weeksSinceDeload();
+    h += '<p class="muted">' + (w.isDeload ? 'Deload week — a qualifying week (3 of 4 gym sessions) completes it; otherwise it carries to next week.'
+      : left <= 1 ? 'Deload next week if this week qualifies (3 of 4 gym sessions).'
+      : 'Deload after ' + left + ' more qualifying weeks (3 of 4 gym sessions; illness and light weeks don\'t count).') + '</p>';
     h += '<div class="week-list">';
     w.days.forEach((d, i) => {
       const tpl = D.DAYS[d.dayType];
@@ -2257,8 +2261,8 @@ LTA.ui = (function () {
     const loggedId = lw.done[today];
     const logged = loggedId && s.sessions.find((x) => x.id === loggedId);
     let h = '<div class="card session-card">' +
-      '<div class="session-kind">🍃 Light week · day ' + (idx + 1) + ' of 7</div>' +
-      '<p class="muted">The regular plan is on hold and this week doesn\'t count toward your training weeks or deload cycle.</p>';
+      '<div class="session-kind">🍃 Light week · day ' + (idx + 1) + ' of ' + E.lightWeekLength() + ' · ends Sunday</div>' +
+      '<p class="muted">The regular plan is on hold and this week doesn\'t count toward your training weeks. A deload due this week moves to next week.</p>';
     h += '<h3>' + esc(plan.title) + ' <span class="muted">· ' + esc(plan.minutes) + ' min</span></h3>';
     h += '<div class="seg" id="seg-lightCheck">' + [['good', '🙂 Good'], ['meh', '😐 Meh'], ['rough', '🤒 Rough']].map((o) =>
       '<button class="seg-btn' + (check === o[0] ? ' active' : '') + '" onclick="LTA.ui.lightCheckIn(\'' + o[0] + '\')">' + o[1] + '</button>').join('') + '</div>';
@@ -2282,8 +2286,8 @@ LTA.ui = (function () {
 
   function openLightWeekModal() {
     const h = '<h3>🍃 Light week</h3>' +
-      '<p>A 7-day gentle return after a virus or when you\'re run down: easy walks and bike, two light full-body strength days, no HIIT, running or heavy lifting, with a daily feel check.</p>' +
-      '<p class="muted">It sits beside your regular plan. It does not count as a training week, doesn\'t move the deload cycle, and doesn\'t change any weights, run stages or pain states. The regular plan resumes after day 7.</p>' +
+      '<p>A gentle return for the rest of this week (to Sunday) after a virus or when you\'re run down: easy walks and bike, two light full-body strength days, no HIIT, running or heavy lifting, with a daily feel check.</p>' +
+      '<p class="muted">It sits beside your regular plan. It does not count as a training week and doesn\'t change any weights, run stages or pain states. A deload due this week moves to next week. The regular plan resumes on Monday.</p>' +
       '<button class="btn btn-primary btn-big" onclick="LTA.ui.confirmLightWeek()">Start light week today</button>';
     modal(h, true);
   }

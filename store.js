@@ -14,6 +14,7 @@
  *   racketExtraAreas: [{key, label}],  // custom pain areas templated into every racket session
  *   illness: { active: bool, startDate, reportedAt },  // program pause while unwell — see LTA.engine.reportIllness
  *   lightWeek: { active, startDate, endDate, checkIns: {date: 'good'|'meh'|'rough'}, done: {date: sessionId} },  // light-week overlay — never touches weekCounter/progression
+ *   weekCounter = 1 + qualifying weeks so far (display only); deloads follow LTA.engine.deloadDue()
  *   lightHistory: [{startDate, endDate, endedAt}],
  *   abdominalState: { caution: bool, side: 'left'|'right'|'both'|null, since: date|null },  // gentler core/jump options while on
  *   popupState: { stageId, sessionsAtStage, highHipStreak }  // surf pop-up ladder, gated on front-of-hip pinch
@@ -29,7 +30,7 @@ LTA.store = (function () {
   'use strict';
 
   const KEY = 'lta.state';
-  const CURRENT_SCHEMA = 11;
+  const CURRENT_SCHEMA = 13;
   let state = null;
   let saveTimer = null;
   const listeners = [];
@@ -94,6 +95,35 @@ LTA.store = (function () {
       s.popupState = s.popupState || { stageId: 0, sessionsAtStage: 0, highHipStreak: 0 };
       if (s.currentWeek && !s.currentWeek.mode) s.currentWeek.mode = 'racket';
       (s.weekHistory || []).forEach((w) => { if (!w.mode) w.mode = 'racket'; });
+    },
+    // One-off repair: a deload week that was turned into a light week used to be lost (and the
+    // Build/Strength block flipped early). If the week right after such a week is current, make
+    // it the deload it should have been and undo the early block flip.
+    11: function (s) {
+      const hist = s.weekHistory || [];
+      const last = hist[hist.length - 1];
+      const cur = s.currentWeek;
+      if (!last || !cur || cur.isDeload || !last.isDeload) return;
+      if (last.countedTowardCadence !== false) return;
+      if (!last.days.some((d) => d.status === 'light')) return;
+      if (cur.weekStart !== LTA.util.addDays(last.weekStart, 7)) return;
+      cur.isDeload = true;
+      const flipIdx = (cur.decisions || []).findIndex((x) => /^New block:/.test(x));
+      if (flipIdx >= 0) {
+        cur.decisions.splice(flipIdx, 1);
+        s.phase = s.phase === 'strength' ? 'build' : 'strength';
+      }
+      cur.decisions.push('Deload carried over — last week was a light week, so this week is the deload.');
+      cur.deloadReason = 'carried';
+    },
+    // Week N becomes a plain total of qualifying weeks (low-readiness deloads used to reset it to 1).
+    12: function (s) {
+      const counted = (s.weekHistory || []).filter((w) => {
+        if (w.countedTowardCadence !== undefined) return !!w.countedTowardCadence;
+        const t = w.days.filter((d) => d.dayType !== 'rest');
+        return !t.length || !t.every((d) => d.status === 'sick' || d.status === 'light');
+      }).length;
+      s.weekCounter = counted + 1;
     },
   };
 
