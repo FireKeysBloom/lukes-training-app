@@ -7,7 +7,7 @@ LTA.ui = (function () {
   const D = LTA.data;
   const E = LTA.engine;
 
-  const APP_VERSION = '2026.11.16.13';
+  const APP_VERSION = '2026.11.16.14';
   let swVersion = '';
   let tab = 'today';
   let session = null;          // in-progress session player state
@@ -2082,6 +2082,27 @@ LTA.ui = (function () {
 
   // ---------- Week view ----------
 
+  // Build ↔ Strength blocks alternate, switching each time a deload is completed.
+  const BLOCKS = {
+    build: { name: 'Build', what: 'main lifts at moderate reps for muscle' },
+    strength: { name: 'Strength', what: 'main lifts at low reps, heavier, with longer rest' },
+  };
+  function blockCardHTML(w) {
+    const cur = S().phase === 'strength' ? 'strength' : 'build';
+    const nxt = cur === 'strength' ? 'build' : 'strength';
+    const left = E.WEEKS_BETWEEN_DELOADS - E.weeksSinceDeload();
+    const when = w.isDeload ? 'starts next week, once this deload week is done'
+      : left <= 1 ? 'starts after next week\'s deload'
+      : 'starts after the deload, in about ' + (left + 1) + ' weeks';
+    const deload = w.isDeload ? 'This is the deload week. It\'s complete once you do 3 of the 4 gym sessions; if you don\'t, it carries to next week.'
+      : left <= 1 ? 'Deload next week, if this week qualifies (3 of 4 gym sessions).'
+      : 'Deload after ' + left + ' more qualifying weeks (3 of 4 gym sessions; illness and light weeks don\'t count).';
+    return '<div class="card"><div class="card-title">Training block</div>' +
+      '<p><strong>Now: ' + BLOCKS[cur].name + '</strong> <span class="muted">· ' + BLOCKS[cur].what + (w.isDeload ? ' (finishing with this deload)' : '') + '</span></p>' +
+      '<p><strong>Next: ' + BLOCKS[nxt].name + '</strong> <span class="muted">· ' + BLOCKS[nxt].what + ' · ' + when + '</span></p>' +
+      '<p class="muted">' + deload + '</p></div>';
+  }
+
   function renderWeek(view) {
     const s = S();
     const w = s.currentWeek;
@@ -2091,10 +2112,7 @@ LTA.ui = (function () {
     h += '<p class="muted">' + (E.weekMode() === 'surf'
       ? 'Pop-up ladder, paddle endurance and rotational power replace jumps, grip and the adductor machine. Engine day = paddle + surf skills. Strength, run and rehab work carry on as normal.'
       : 'Jumps, grip and court movement. Switch to Surf any time — only days not yet done change, and it sticks for the following weeks.') + '</p>';
-    const left = E.WEEKS_BETWEEN_DELOADS - E.weeksSinceDeload();
-    h += '<p class="muted">' + (w.isDeload ? 'Deload week — a qualifying week (3 of 4 gym sessions) completes it; otherwise it carries to next week.'
-      : left <= 1 ? 'Deload next week if this week qualifies (3 of 4 gym sessions).'
-      : 'Deload after ' + left + ' more qualifying weeks (3 of 4 gym sessions; illness and light weeks don\'t count).') + '</p>';
+    h += blockCardHTML(w);
     h += '<div class="week-list">';
     w.days.forEach((d, i) => {
       const tpl = D.DAYS[d.dayType];
